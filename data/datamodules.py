@@ -1,10 +1,13 @@
 from pytorch_lightning import LightningDataModule
-from torch.utils.data import TensorDataset, DataLoader
+from torch.utils.data import TensorDataset, DataLoader, random_split
 from sklearn.model_selection import train_test_split
+import torch
 import numpy as np
 import csv
+from torchvision import transforms
+from torchvision.datasets import MNIST
 
-class Moons4D2D(LightningDataModule):
+class MoonsDatamodule(LightningDataModule):
     def __init__(self):
         super().__init__()
         Xtrain = np.zeros((500, 4))
@@ -35,8 +38,68 @@ class Moons4D2D(LightningDataModule):
         
     def test_dataloader(self):
         return DataLoader(self.test_data)
-        
+
+
+class MnistDatamodule(LightningDataModule):
+    def __init__(
+        self, 
+        data_dir: str = "", 
+        labels_to_use=[0,1,2,3,4,5,6,7,8,9],
+        batch_size: int = 64
+    ):
+        super().__init__()
+        self.data_dir = data_dir
+        self.labels_to_use = labels_to_use
+        self.batch_size = batch_size
+
+    def prepare_data(self):
+        MNIST(self.data_dir, train=True, download=True)
+        MNIST(self.data_dir, train=False, download=True)
+
+    def setup(self, stage=None):
+        if stage in (None, "fit"):
+            data = MNIST(
+                self.data_dir,
+                train=True,
+                download=True,
+                transform=transforms.ToTensor(),
+            )
+            data = self._get_label_set(data)
+            self.n_train = int(0.95*data.targets.shape[0])
+            self.n_val = data.targets.shape[0] - self.n_train
+            self.train, self.val = random_split(data, [self.n_train, self.n_val])
+
+        if stage in (None, "test"):
+            data =  MNIST(
+                self.data_dir,
+                train=False,
+                download=True,
+                transform=transforms.ToTensor(),
+            )
+            self.test = self._get_label_set(data)
+            self.n_test = self.test.targets.shape[0]
+
+    def _get_label_set(self, data):
+        idx = torch.stack([data.targets == val for val in self.labels_to_use]).sum(0).bool()
+        data.data = data.data[idx]
+        data.targets = data.targets[idx]
+        return data
+
+    def train_dataloader(self):
+        return DataLoader(self.train, batch_size=self.batch_size)
+
+    def val_dataloader(self):
+        return DataLoader(self.val, batch_size=self.batch_size)
+
+    def test_dataloader(self):
+        return DataLoader(self.test, batch_size=self.batch_size)
+
         
 if __name__ == '__main__':
-    datamodule = Moons4D2D()
+    datamodule = MnistDatamodule(labels_to_use=[0,1])
+    datamodule.prepare_data()
+    datamodule.setup()
+    print(datamodule.n_train)
+    print(datamodule.n_val)
+    print(datamodule.n_test)
     
