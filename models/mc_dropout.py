@@ -1,16 +1,15 @@
 from torch import nn, Tensor
 from models.layers import AdditiveRegularizer, Reshape, MCDropout2d, MCDropout
 from models.vae import VAE
-from pytorch_lightning import LightningModule
 from torch import distributions as D
 import torch
 import wandb
 import matplotlib.pyplot as plt
 
 
-class MCVAE(VAE, LightningModule):
-    def __init__(self, latent_size, learning_rate, kl_warmup_steps, prob, **kwargs):
-        super().__init__(latent_size, learning_rate, kl_warmup_steps)
+class MCVAE(VAE):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         
         self.encoder = nn.Sequential(
             nn.Conv2d(1, 32, 3, stride=2),
@@ -21,28 +20,28 @@ class MCVAE(VAE, LightningModule):
             nn.LeakyReLU(),
             nn.Flatten(),
         )
-        self.encoder_mu = nn.Linear(512, latent_size)
-        self.encoder_std = nn.Sequential(nn.Linear(512, latent_size), nn.Softplus(), AdditiveRegularizer())
+        self.encoder_mu = nn.Linear(512, self.hparams.latent_size)
+        self.encoder_std = nn.Sequential(nn.Linear(512, self.hparams.latent_size), nn.Softplus(), AdditiveRegularizer())
 
         self.decoder = nn.Sequential(
-            nn.Linear(latent_size, 128),
-            MCDropout(p=prob),
+            nn.Linear(self.hparams.latent_size, 128),
+            MCDropout(p=self.hparams.prob),
             nn.LeakyReLU(),
             Reshape(128, 1, 1),
             nn.ConvTranspose2d(128, 64, 3, stride=2),
-            MCDropout2d(p=prob),
+            MCDropout2d(p=self.hparams.prob),
             nn.LeakyReLU(),
             nn.ConvTranspose2d(64, 32, 3, stride=2),
-            MCDropout2d(p=prob),
+            MCDropout2d(p=self.hparams.prob),
             nn.LeakyReLU(),
             nn.ConvTranspose2d(32, 16, 3, stride=2),
-            MCDropout2d(p=prob),
+            MCDropout2d(p=self.hparams.prob),
             nn.LeakyReLU(),
             nn.ConvTranspose2d(16, 8, 3, stride=2),
-            MCDropout2d(p=prob),
+            MCDropout2d(p=self.hparams.prob),
             nn.LeakyReLU(),
             nn.Conv2d(8, 1, 4),
-            MCDropout2d(p=prob),
+            MCDropout2d(p=self.hparams.prob),
             nn.Sigmoid(),
         )
 

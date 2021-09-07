@@ -37,3 +37,12 @@ class MCDropout2d(nn.Dropout2d):
     def train(self, mode):
         # disable switching into eval mode
         return self
+
+
+class EnsembleList(nn.ModuleList):
+    def forward(self, x: Tensor) -> Tensor:
+        # If input as 
+        if x.shape[0] == len(self):
+            return torch.stack([m(xx) for xx,m in zip(x, self)])
+        else:
+            return torch.stack([m(x) for m in self])

@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 
 class VAE(LightningModule):
-    def __init__(self, latent_size, learning_rate, kl_warmup_steps, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__()
         self.save_hyperparameters()
 
@@ -21,11 +21,11 @@ class VAE(LightningModule):
             nn.LeakyReLU(),
             nn.Flatten(),
         )
-        self.encoder_mu = nn.Linear(512, latent_size)
-        self.encoder_std = nn.Sequential(nn.Linear(512, latent_size), nn.Softplus(), AdditiveRegularizer())
+        self.encoder_mu = nn.Linear(512, self.hparams.latent_size)
+        self.encoder_std = nn.Sequential(nn.Linear(512, self.hparams.latent_size), nn.Softplus(), AdditiveRegularizer())
 
         self.decoder = nn.Sequential(
-            nn.Linear(latent_size, 128),
+            nn.Linear(self.hparams.latent_size, 128),
             nn.LeakyReLU(),
             Reshape(128, 1, 1),
             nn.ConvTranspose2d(128, 64, 3, stride=2),
@@ -63,8 +63,7 @@ class VAE(LightningModule):
         return min([float(self.warmup_steps / self.hparams.kl_warmup_steps), 1.0])
 
     def forward(self, z: Tensor) -> Tensor:
-        x = self.decoder(z)
-        return x
+        return self.decoder(z)
 
     def encode(self, x: Tensor) -> Tensor:
         h = self.encoder(x)
@@ -124,7 +123,6 @@ class VAE(LightningModule):
         plt.axis([-5, 5, -5, 5])
         plt.legend()
         plt.grid(True)
-        self.logger.experiment.log({"latent_space": wandb.Image(plt)}, commit=False)
 
         # plot latent variance
         n_points = 20
@@ -143,18 +141,18 @@ class VAE(LightningModule):
         plt.clf()
 
     def validation_step(self, batch, batch_idx):
-        x, y = batch
+        x, _ = batch
         self._step(x, "val")
 
     def test_step(self, batch, batch_idx):
-        x, y = batch
+        x, _ = batch
         self._step(x, "test")
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
         scheduler = {
             "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(
-                optimizer, mode="min", patience=2
+                optimizer, mode="min", patience=int(self.hparams.patience / 2)
             ),
             "monitor": "val_loss",
             "strict": False,
