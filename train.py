@@ -1,16 +1,18 @@
-import pytorch_lightning as pl
-from pytorch_lightning.core import datamodule
-from models import VAE, MCVAE, EVAE, NVAE
-from data.datamodules import MnistDatamodule
 from argparse import ArgumentParser
 
+import pytorch_lightning as pl
+from data.datamodules import MnistDatamodule
+from models import EVAE, MCVAE, NVAE, VAE
+from pytorch_lightning.core import datamodule
 
 if __name__ == "__main__":
     # Argument parsing
     parser = ArgumentParser()
     parser.add_argument("--model", type=str, default="")
     parser.add_argument("--data_dir", type=str, default="")
-    parser.add_argument("--labels_to_use", nargs='+', type=int, default=[0,1,2,3,4,5,6,7,8,9])
+    parser.add_argument(
+        "--labels_to_use", nargs="+", type=int, default=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    )
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--kl_warmup_steps", type=int, default=1)
     parser.add_argument("--latent_size", type=int, default=2)
@@ -22,13 +24,13 @@ if __name__ == "__main__":
     parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
 
-    if args.model == 'VAE':
+    if args.model == "VAE":
         model_class = VAE
-    elif args.model == 'MCVAE':
+    elif args.model == "MCVAE":
         model_class = MCVAE
-    elif args.model == 'EVAE':
+    elif args.model == "EVAE":
         model_class = EVAE
-    elif args.model == 'NVAE':
+    elif args.model == "NVAE":
         model_class = NVAE
 
     datamodule = MnistDatamodule(args.data_dir, args.labels_to_use)
@@ -37,15 +39,17 @@ if __name__ == "__main__":
         dirpath="checkpoints/", monitor="val_loss", mode="min"
     )
     stopper = pl.callbacks.EarlyStopping(
-        monitor="val_loss", mode="min", patience=args.patience,
+        monitor="val_loss",
+        mode="min",
+        patience=args.patience,
     )
 
     trainer = pl.Trainer.from_argparse_args(
         args,
-        logger=pl.loggers.WandbLogger(project='calibrated_vae'),
+        logger=pl.loggers.WandbLogger(project="calibrated_vae"),
         callbacks=[
-            checkpointer, 
-            stopper, 
+            checkpointer,
+            stopper,
             pl.callbacks.LearningRateMonitor(),
         ],
     )

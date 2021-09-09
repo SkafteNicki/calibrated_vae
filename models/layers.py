@@ -1,13 +1,15 @@
 import torch
-from torch import nn, Tensor
-from torch.nn.modules.activation import MultiheadAttention
+from torch import Tensor
 from torch import distributions as D
+from torch import nn
+from torch.nn.modules.activation import MultiheadAttention
+
 
 class AdditiveRegularizer(nn.Module):
     def __init__(self, epsilon: float = 1e-6):
         super().__init__()
         self.epsilon = epsilon
-        
+
     def forward(self, x: Tensor) -> Tensor:
         return x + self.epsilon
 
@@ -43,9 +45,9 @@ class MCDropout2d(nn.Dropout2d):
 
 class EnsembleList(nn.ModuleList):
     def forward(self, x: Tensor) -> Tensor:
-        # If input as 
+        # If input as
         if x.shape[0] == len(self):
-            return torch.stack([m(xx) for xx,m in zip(x, self)])
+            return torch.stack([m(xx) for xx, m in zip(x, self)])
         else:
             return torch.stack([m(x) for m in self])
 

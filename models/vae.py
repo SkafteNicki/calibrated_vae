@@ -1,10 +1,11 @@
-from torch import nn, Tensor
-from models.layers import AdditiveRegularizer, Reshape
-from pytorch_lightning import LightningModule
-from torch import distributions as D
+import matplotlib.pyplot as plt
 import torch
 import wandb
-import matplotlib.pyplot as plt
+from models.layers import AdditiveRegularizer, Reshape
+from pytorch_lightning import LightningModule
+from torch import Tensor
+from torch import distributions as D
+from torch import nn
 
 
 class VAE(LightningModule):
@@ -22,7 +23,11 @@ class VAE(LightningModule):
             nn.Flatten(),
         )
         self.encoder_mu = nn.Linear(512, self.hparams.latent_size)
-        self.encoder_std = nn.Sequential(nn.Linear(512, self.hparams.latent_size), nn.Softplus(), AdditiveRegularizer())
+        self.encoder_std = nn.Sequential(
+            nn.Linear(512, self.hparams.latent_size),
+            nn.Softplus(),
+            AdditiveRegularizer(),
+        )
 
         self.decoder = nn.Sequential(
             nn.Linear(self.hparams.latent_size, 128),
@@ -117,8 +122,11 @@ class VAE(LightningModule):
         # plot latent encodings
         for i in labels.unique():
             plt.scatter(
-                latents[i==labels, 0].cpu(), latents[i==labels, 1].cpu(), 
-                label=str(i), zorder=10, alpha=0.5
+                latents[i == labels, 0].cpu(),
+                latents[i == labels, 1].cpu(),
+                label=str(i),
+                zorder=10,
+                alpha=0.5,
             )
         plt.axis([-5, 5, -5, 5])
         plt.legend()
@@ -126,15 +134,21 @@ class VAE(LightningModule):
 
         # plot latent variance
         n_points = 20
-        z_sample = torch.stack(torch.meshgrid([torch.linspace(-5, 5, n_points) for _ in range(2)])).reshape(2, -1).T
+        z_sample = (
+            torch.stack(
+                torch.meshgrid([torch.linspace(-5, 5, n_points) for _ in range(2)])
+            )
+            .reshape(2, -1)
+            .T
+        )
         x_out = self(z_sample.to(self.device))
-        x_var = D.Bernoulli(probs=x_out).entropy().sum(dim=[1,2,3])
+        x_var = D.Bernoulli(probs=x_out).entropy().sum(dim=[1, 2, 3])
         plt.contourf(
-            z_sample[:,0].reshape(n_points, n_points),
-            z_sample[:,1].reshape(n_points, n_points),
+            z_sample[:, 0].reshape(n_points, n_points),
+            z_sample[:, 1].reshape(n_points, n_points),
             x_var.reshape(n_points, n_points).detach().cpu(),
             levels=50,
-            zorder=0
+            zorder=0,
         )
         plt.colorbar()
         self.logger.experiment.log({"latent_entropy": wandb.Image(plt)}, commit=False)

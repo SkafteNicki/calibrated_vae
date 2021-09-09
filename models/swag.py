@@ -1,15 +1,14 @@
 from copy import deepcopy
 from typing import Callable, List, Optional, Union
 
-import torch
-from torch import nn
-from torch.optim.swa_utils import SWALR
-
 import pytorch_lightning as pl
+import torch
 from pytorch_lightning.callbacks.base import Callback
 from pytorch_lightning.trainer.optimizers import _get_default_scheduler_config
 from pytorch_lightning.utilities import rank_zero_info, rank_zero_warn
 from pytorch_lightning.utilities.exceptions import MisconfigurationException
+from torch import nn
+from torch.optim.swa_utils import SWALR
 
 _AVG_FN = Callable[[torch.Tensor, torch.Tensor, torch.LongTensor], torch.FloatTensor]
 
@@ -68,7 +67,9 @@ class StochasticWeightAveragingGaussian(Callback):
 
         wrong_type = not isinstance(swa_lrs, (float, list))
         wrong_float = isinstance(swa_lrs, float) and swa_lrs <= 0
-        wrong_list = isinstance(swa_lrs, list) and not all(lr > 0 and isinstance(lr, float) for lr in swa_lrs)
+        wrong_list = isinstance(swa_lrs, list) and not all(
+            lr > 0 and isinstance(lr, float) for lr in swa_lrs
+        )
         if swa_lrs is not None and (wrong_type or wrong_float or wrong_list):
             raise MisconfigurationException(
                 "The `swa_lrs` should be `None`, a positive float, or a list of positive floats"
@@ -78,7 +79,9 @@ class StochasticWeightAveragingGaussian(Callback):
             raise MisconfigurationException("The `avg_fn` should be callable.")
 
         if device is not None and not isinstance(device, (torch.device, str)):
-            raise MisconfigurationException(f"device is expected to be a torch.device or a str. Found {device}")
+            raise MisconfigurationException(
+                f"device is expected to be a torch.device or a str. Found {device}"
+            )
 
         self._swa_epoch_start = swa_epoch_start
         self._swa_lrs = swa_lrs
@@ -100,9 +103,14 @@ class StochasticWeightAveragingGaussian(Callback):
 
     @staticmethod
     def pl_module_contains_batch_norm(pl_module: "pl.LightningModule"):
-        return any(isinstance(module, nn.modules.batchnorm._BatchNorm) for module in pl_module.modules())
+        return any(
+            isinstance(module, nn.modules.batchnorm._BatchNorm)
+            for module in pl_module.modules()
+        )
 
-    def on_before_accelerator_backend_setup(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"):
+    def on_before_accelerator_backend_setup(
+        self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
+    ):
         # copy the model before moving it to accelerator device.
         with pl_module._prevent_trainer_and_dataloaders_deepcopy():
             self._average_model = deepcopy(pl_module)
@@ -116,7 +124,9 @@ class StochasticWeightAveragingGaussian(Callback):
             raise MisconfigurationException("SWA currently works with 1 `optimizer`.")
 
         if len(lr_schedulers) > 1:
-            raise MisconfigurationException("SWA currently not supported for more than 1 `lr_scheduler`.")
+            raise MisconfigurationException(
+                "SWA currently not supported for more than 1 `lr_scheduler`."
+            )
 
         if isinstance(self._swa_epoch_start, float):
             self._swa_epoch_start = int(trainer.max_epochs * self._swa_epoch_start)
@@ -128,15 +138,23 @@ class StochasticWeightAveragingGaussian(Callback):
             # virtually increase max_epochs to perform batch norm update on latest epoch.
             trainer.fit_loop.max_epochs += 1
 
-    def on_train_epoch_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"):
+    def on_train_epoch_start(
+        self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
+    ):
         if trainer.current_epoch == self.swa_start:
             # move average model to request device.
-            self._average_model = self._average_model.to(self._device or pl_module.device)
-            self._squared_model = self._squared_model.to(self._device or pl_module.device)
+            self._average_model = self._average_model.to(
+                self._device or pl_module.device
+            )
+            self._squared_model = self._squared_model.to(
+                self._device or pl_module.device
+            )
 
             optimizer = trainer.optimizers[0]
             if self._swa_lrs is None:
-                self._swa_lrs = [param_group["lr"] for param_group in optimizer.param_groups]
+                self._swa_lrs = [
+                    param_group["lr"] for param_group in optimizer.param_groups
+                ]
             if isinstance(self._swa_lrs, float):
                 self._swa_lrs = [self._swa_lrs] * len(optimizer.param_groups)
 
@@ -148,16 +166,26 @@ class StochasticWeightAveragingGaussian(Callback):
                 swa_lr=self._swa_lrs,
                 anneal_epochs=self._annealing_epochs,
                 anneal_strategy=self._annealing_strategy,
-                last_epoch=trainer.max_epochs if self._annealing_strategy == "cos" else -1,
+                last_epoch=trainer.max_epochs
+                if self._annealing_strategy == "cos"
+                else -1,
             )
             default_scheduler_cfg = _get_default_scheduler_config()
-            assert default_scheduler_cfg["interval"] == "epoch" and default_scheduler_cfg["frequency"] == 1
+            assert (
+                default_scheduler_cfg["interval"] == "epoch"
+                and default_scheduler_cfg["frequency"] == 1
+            )
             default_scheduler_cfg["scheduler"] = self._swa_scheduler
 
             if trainer.lr_schedulers:
                 scheduler_cfg = trainer.lr_schedulers[0]
-                if scheduler_cfg["interval"] != "epoch" or scheduler_cfg["frequency"] != 1:
-                    rank_zero_warn(f"SWA is currently only supported every epoch. Found {scheduler_cfg}")
+                if (
+                    scheduler_cfg["interval"] != "epoch"
+                    or scheduler_cfg["frequency"] != 1
+                ):
+                    rank_zero_warn(
+                        f"SWA is currently only supported every epoch. Found {scheduler_cfg}"
+                    )
                 rank_zero_info(
                     f"Swapping scheduler `{scheduler_cfg['scheduler'].__class__.__name__}`"
                     f" for `{self._swa_scheduler.__class__.__name__}`"
@@ -169,8 +197,20 @@ class StochasticWeightAveragingGaussian(Callback):
             self.n_averaged = torch.tensor(0, dtype=torch.long, device=pl_module.device)
 
         if self.swa_start <= trainer.current_epoch <= self.swa_end:
-            self.update_parameters(self._average_model, pl_module, self.n_averaged, self.avg_fn, squared=False)
-            self.update_parameters(self._squared_model, pl_module, self.n_averaged, self.avg_fn, squared=True)
+            self.update_parameters(
+                self._average_model,
+                pl_module,
+                self.n_averaged,
+                self.avg_fn,
+                squared=False,
+            )
+            self.update_parameters(
+                self._squared_model,
+                pl_module,
+                self.n_averaged,
+                self.avg_fn,
+                squared=True,
+            )
 
         # Note: No > here in case the callback is saved with the model and training continues
         if trainer.current_epoch == self.swa_end + 1:
@@ -194,7 +234,10 @@ class StochasticWeightAveragingGaussian(Callback):
         trainer.fit_loop._skip_backward = False
 
     def on_train_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"):
-        if self._model_contains_batch_norm and trainer.current_epoch == self.swa_end + 1:
+        if (
+            self._model_contains_batch_norm
+            and trainer.current_epoch == self.swa_end + 1
+        ):
             # BatchNorm epoch update. Reset state
             trainer.accumulate_grad_batches = self._accumulate_grad_batches
             trainer.num_training_batches -= 1
@@ -205,8 +248,12 @@ class StochasticWeightAveragingGaussian(Callback):
             self.transfer_weights(self._average_model, pl_module)
 
     @staticmethod
-    def transfer_weights(src_pl_module: "pl.LightningModule", dst_pl_module: "pl.LightningModule"):
-        for src_param, dst_param in zip(src_pl_module.parameters(), dst_pl_module.parameters()):
+    def transfer_weights(
+        src_pl_module: "pl.LightningModule", dst_pl_module: "pl.LightningModule"
+    ):
+        for src_param, dst_param in zip(
+            src_pl_module.parameters(), dst_pl_module.parameters()
+        ):
             dst_param.detach().copy_(src_param.to(dst_param.device))
 
     def reset_batch_norm_and_save_state(self, pl_module: "pl.LightningModule"):
@@ -216,10 +263,14 @@ class StochasticWeightAveragingGaussian(Callback):
             if not isinstance(module, nn.modules.batchnorm._BatchNorm):
                 continue
             module.running_mean = torch.zeros_like(
-                module.running_mean, device=pl_module.device, dtype=module.running_mean.dtype
+                module.running_mean,
+                device=pl_module.device,
+                dtype=module.running_mean.dtype,
             )
             module.running_var = torch.ones_like(
-                module.running_var, device=pl_module.device, dtype=module.running_var.dtype
+                module.running_var,
+                device=pl_module.device,
+                dtype=module.running_var.dtype,
             )
             self.momenta[module] = module.momentum
             module.momentum = None
@@ -232,7 +283,11 @@ class StochasticWeightAveragingGaussian(Callback):
 
     @staticmethod
     def update_parameters(
-        model_to_update: "pl.LightningModule", model: "pl.LightningModule", n_averaged: torch.LongTensor, avg_fn: _AVG_FN, squared: bool
+        model_to_update: "pl.LightningModule",
+        model: "pl.LightningModule",
+        n_averaged: torch.LongTensor,
+        avg_fn: _AVG_FN,
+        squared: bool,
     ):
         """Adapted from https://github.com/pytorch/pytorch/blob/v1.7.1/torch/optim/swa_utils.py#L104-L112."""
         for p_swa, p_model in zip(model_to_update.parameters(), model.parameters()):
@@ -240,15 +295,27 @@ class StochasticWeightAveragingGaussian(Callback):
             p_swa_ = p_swa.detach()
             p_model_ = p_model.detach().to(device)
             if squared:
-                src = p_model_ ** 2 if n_averaged == 0 else avg_fn(p_swa_, p_model_ ** 2, n_averaged.to(device))
+                src = (
+                    p_model_ ** 2
+                    if n_averaged == 0
+                    else avg_fn(p_swa_, p_model_ ** 2, n_averaged.to(device))
+                )
             else:
-                src = p_model_ if n_averaged == 0 else avg_fn(p_swa_, p_model_, n_averaged.to(device))
+                src = (
+                    p_model_
+                    if n_averaged == 0
+                    else avg_fn(p_swa_, p_model_, n_averaged.to(device))
+                )
             p_swa_.copy_(src)
         n_averaged += 1
 
     @staticmethod
     def avg_fn(
-        averaged_model_parameter: torch.Tensor, model_parameter: torch.Tensor, num_averaged: torch.LongTensor
+        averaged_model_parameter: torch.Tensor,
+        model_parameter: torch.Tensor,
+        num_averaged: torch.LongTensor,
     ) -> torch.FloatTensor:
         """Adapted from https://github.com/pytorch/pytorch/blob/v1.7.1/torch/optim/swa_utils.py#L95-L97."""
-        return averaged_model_parameter + (model_parameter - averaged_model_parameter) / (num_averaged + 1)
+        return averaged_model_parameter + (
+            model_parameter - averaged_model_parameter
+        ) / (num_averaged + 1)
