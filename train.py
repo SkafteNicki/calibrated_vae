@@ -1,6 +1,6 @@
 import pytorch_lightning as pl
 from pytorch_lightning.core import datamodule
-from models import VAE, MCVAE, EVAE
+from models import VAE, MCVAE, EVAE, NVAE
 from data.datamodules import MnistDatamodule
 from argparse import ArgumentParser
 
@@ -28,6 +28,8 @@ if __name__ == "__main__":
         model_class = MCVAE
     elif args.model == 'EVAE':
         model_class = EVAE
+    elif args.model == 'NVAE':
+        model_class = NVAE
 
     datamodule = MnistDatamodule(args.data_dir, args.labels_to_use)
 

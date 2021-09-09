@@ -1,5 +1,7 @@
 import torch
 from torch import nn, Tensor
+from torch.nn.modules.activation import MultiheadAttention
+from torch import distributions as D
 
 class AdditiveRegularizer(nn.Module):
     def __init__(self, epsilon: float = 1e-6):
@@ -46,3 +48,24 @@ class EnsembleList(nn.ModuleList):
             return torch.stack([m(xx) for xx,m in zip(x, self)])
         else:
             return torch.stack([m(x) for m in self])
+
+
+class NormalSigmoidResample(nn.Module):
+    def __init__(self, mean_module, std_module):
+        super().__init__()
+        self.mean_module = mean_module
+        self.std_module = std_module
+        self._std_out = None
+
+    def forward(self, x: Tensor) -> Tensor:
+        mean = self.mean_module(x)
+        std = self.std_module(x)
+        self._std_out = std
+        d = D.Normal(mean, std)
+        return torch.sigmoid(d.rsample())
+
+
+def weight_reset(m):
+    reset_parameters = getattr(m, "reset_parameters", None)
+    if callable(reset_parameters):
+        m.reset_parameters()

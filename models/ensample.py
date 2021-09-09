@@ -1,16 +1,13 @@
 from models.vae import VAE
 from torch import nn
 from copy import deepcopy
-from models.layers import EnsembleList
+from models.layers import EnsembleList, weight_reset
 from torch import distributions as D
 import torch
 import wandb
 import matplotlib.pyplot as plt
 
-def weight_reset(m):
-    reset_parameters = getattr(m, "reset_parameters", None)
-    if callable(reset_parameters):
-        m.reset_parameters()
+
 
 
 class EVAE(VAE):
@@ -21,6 +18,7 @@ class EVAE(VAE):
             self.encoder = EnsembleList([deepcopy(self.encoder).apply(weight_reset) for _ in range(self.hparams.n_ensemble)])
             self.encoder_mu = EnsembleList([deepcopy(self.encoder_mu).apply(weight_reset) for _ in range(self.hparams.n_ensemble)])
             self.encoder_std = EnsembleList([deepcopy(self.encoder_std).apply(weight_reset) for _ in range(self.hparams.n_ensemble)])
+
         self.decoder = EnsembleList([deepcopy(self.decoder).apply(weight_reset) for _ in range(self.hparams.n_ensemble)])
 
     def _step(self, x, state):

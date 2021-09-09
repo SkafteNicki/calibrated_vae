@@ -132,7 +132,7 @@ class VAE(LightningModule):
         plt.contourf(
             z_sample[:,0].reshape(n_points, n_points),
             z_sample[:,1].reshape(n_points, n_points),
-            x_var.reshape(n_points, n_points).detach(),
+            x_var.reshape(n_points, n_points).detach().cpu(),
             levels=50,
             zorder=0
         )
