@@ -6,6 +6,7 @@ from pytorch_lightning import LightningModule
 from torch import Tensor
 from torch import distributions as D
 from torch import nn
+from typing import Tuple
 
 
 class VAE(LightningModule):
@@ -51,15 +52,17 @@ class VAE(LightningModule):
         # recon loss
         self.recon = nn.BCELoss(reduction="none")
 
+        self._prior = None
+
     @property
     def prior(self):
-        return D.Independent(
-            D.Normal(
-                torch.zeros(1, self.hparams.latent_size, device=self.device),
-                torch.ones(1, self.hparams.latent_size, device=self.device),
-            ),
-            1,
-        )
+        if self._prior is None:
+            ls = self.hparams.latent_size
+            self._prior = D.Independent(D.Normal(
+                torch.zeros(1, ls, device=self.device),
+                torch.ones(1, ls, device=self.device),
+            ), 1)
+        return self._prior
 
     @property
     def beta(self):
@@ -76,13 +79,22 @@ class VAE(LightningModule):
         z_std = self.encoder_std(h)
         return z_mu, z_std
 
-    def _step(self, x, state):
+    def encode_decode(self, x: Tensor) -> Tuple[Tensor, Tensor, D.Distribution, Tensor]:
         z_mu, z_std = self.encode(x)
         q_dist = D.Independent(D.Normal(z_mu, z_std), 1)
         z = q_dist.rsample()
         x_hat = self(z)
-
         kl = D.kl_divergence(q_dist, self.prior).mean()
+        return z_mu, z_std, x_hat, kl
+
+    def log_prob(self, x: Tensor) -> Tensor:
+        _, _, x_hat, _ = self.encode_decode()
+        dist = D.Independent(D.Bernoulli(probs=x_hat), 3)
+        return dist.log_prob(x)
+
+    def _step(self, x, state):
+        z_mu, z_std, x_hat, kl = self.encode_decode(x)
+
         recon = self.recon(x_hat, x).sum(dim=[1, 2, 3]).mean()
 
         beta = self.beta

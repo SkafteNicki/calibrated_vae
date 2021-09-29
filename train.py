@@ -2,13 +2,13 @@ from argparse import ArgumentParser
 
 import pytorch_lightning as pl
 from data.datamodules import MnistDatamodule
-from models import EVAE, MCVAE, NVAE, VAE
+from models import EVAE, MCVAE, NVAE, VAE, DEVAE, MEVAE
 from pytorch_lightning.core import datamodule
 
 if __name__ == "__main__":
     # Argument parsing
     parser = ArgumentParser()
-    parser.add_argument("--model", type=str, default="")
+    parser.add_argument("model", type=str, default="")
     parser.add_argument("--data_dir", type=str, default="")
     parser.add_argument(
         "--labels_to_use", nargs="+", type=int, default=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -20,7 +20,6 @@ if __name__ == "__main__":
     parser.add_argument("--prob", type=float, default=0.05)
     parser.add_argument("--patience", type=int, default=10)
     parser.add_argument("--n_ensemble", type=int, default=5)
-    parser.add_argument("--ensemble_only_decoder", type=bool, default=False)
     parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
 
@@ -32,12 +31,17 @@ if __name__ == "__main__":
         model_class = EVAE
     elif args.model == "NVAE":
         model_class = NVAE
+    elif args.model == "DEVAE":
+        model_class = DEVAE
+    elif args.model == "MEVAE":
+        model_class = MEVAE
 
     datamodule = MnistDatamodule(args.data_dir, args.labels_to_use)
 
     checkpointer = pl.callbacks.ModelCheckpoint(
         dirpath="checkpoints/", monitor="val_loss", mode="min"
     )
+
     stopper = pl.callbacks.EarlyStopping(
         monitor="val_loss",
         mode="min",
@@ -51,7 +55,8 @@ if __name__ == "__main__":
             checkpointer,
             stopper,
             pl.callbacks.LearningRateMonitor(),
-        ],
+            
+        ] + [pl.callbacks.GPUStatsMonitor()] if args.gpus else [],
     )
 
     model = model_class(**vars(args))

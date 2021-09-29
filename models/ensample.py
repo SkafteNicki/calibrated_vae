@@ -13,26 +13,6 @@ class EVAE(VAE):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        if not self.hparams.ensemble_only_decoder:
-            self.encoder = EnsembleList(
-                [
-                    deepcopy(self.encoder).apply(weight_reset)
-                    for _ in range(self.hparams.n_ensemble)
-                ]
-            )
-            self.encoder_mu = EnsembleList(
-                [
-                    deepcopy(self.encoder_mu).apply(weight_reset)
-                    for _ in range(self.hparams.n_ensemble)
-                ]
-            )
-            self.encoder_std = EnsembleList(
-                [
-                    deepcopy(self.encoder_std).apply(weight_reset)
-                    for _ in range(self.hparams.n_ensemble)
-                ]
-            )
-
         self.decoder = EnsembleList(
             [
                 deepcopy(self.decoder).apply(weight_reset)
@@ -41,12 +21,8 @@ class EVAE(VAE):
         )
 
     def _step(self, x, state):
-        z_mu, z_std = self.encode(x)
-        q_dist = D.Independent(D.Normal(z_mu, z_std), 1)
-        z = q_dist.rsample()
-        x_hat = self(z)
+        z_mu, z_std, x_hat, kl = self.encode_decode(x)
 
-        kl = D.kl_divergence(q_dist, self.prior).mean()
         x_ = x.repeat(self.hparams.n_ensemble, 1, 1, 1).reshape(
             self.hparams.n_ensemble, *x.shape
         )
@@ -86,14 +62,13 @@ class EVAE(VAE):
         return {"loss": loss, "latents": z_mu.detach(), "labels": y.detach()}
 
     def training_epoch_end(self, outputs):
-        if self.hparams.ensemble_only_decoder:
-            labels = torch.cat([o["labels"] for o in outputs], dim=0)
+        labels = torch.cat([o["labels"] for o in outputs], dim=0)
+        if outputs[0]['latents'].ndim < 3:
             latents = torch.cat([o["latents"] for o in outputs], dim=0)
             latents = latents.repeat(self.hparams.n_ensemble, 1).reshape(
                 self.hparams.n_ensemble, *latents.shape
             )
         else:
-            labels = torch.cat([o["labels"] for o in outputs], dim=0)
             latents = torch.cat([o["latents"] for o in outputs], dim=1)
 
         n_points = 20
