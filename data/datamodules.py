@@ -45,11 +45,13 @@ class MoonsDatamodule(LightningDataModule):
 class MnistDatamodule(LightningDataModule):
     def __init__(
         self,
+        name: str = "mnist",
         data_dir: str = "",
         labels_to_use=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
         batch_size: int = 64,
     ):
         super().__init__()
+        self.name = name
         self.data_dir = data_dir
         self.labels_to_use = labels_to_use
         self.batch_size = batch_size
@@ -82,11 +84,7 @@ class MnistDatamodule(LightningDataModule):
             self.n_test = self.test.targets.shape[0]
 
     def _get_label_set(self, data):
-        idx = (
-            torch.stack([data.targets == val for val in self.labels_to_use])
-            .sum(0)
-            .bool()
-        )
+        idx = torch.stack([data.targets == val for val in self.labels_to_use]).sum(0).bool()
         data.data = data.data[idx]
         data.targets = data.targets[idx]
         return data

@@ -4,3 +4,4 @@ wandb
 numpy
 matplotlib
 seaborn
+hydra-core

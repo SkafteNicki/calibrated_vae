@@ -2,11 +2,12 @@ from copy import deepcopy
 
 import matplotlib.pyplot as plt
 import torch
+from torch import distributions as D
+from torch import nn
+
 import wandb
 from models.layers import EnsembleList, weight_reset
 from models.vae import VAE
-from torch import distributions as D
-from torch import nn
 
 
 class EVAE(VAE):
@@ -14,18 +15,13 @@ class EVAE(VAE):
         super().__init__(**kwargs)
 
         self.decoder = EnsembleList(
-            [
-                deepcopy(self.decoder).apply(weight_reset)
-                for _ in range(self.hparams.n_ensemble)
-            ]
+            [deepcopy(self.decoder).apply(weight_reset) for _ in range(self.hparams.n_ensemble)]
         )
 
     def _step(self, x, state):
         z_mu, z_std, x_hat, kl = self.encode_decode(x)
 
-        x_ = x.repeat(self.hparams.n_ensemble, 1, 1, 1).reshape(
-            self.hparams.n_ensemble, *x.shape
-        )
+        x_ = x.repeat(self.hparams.n_ensemble, 1, 1, 1).reshape(self.hparams.n_ensemble, *x.shape)
         recon = self.recon(x_hat, x_).sum(dim=[2, 3, 4]).mean()
 
         beta = self.beta
@@ -54,16 +50,14 @@ class EVAE(VAE):
             # plot samples
             z_sample = torch.randn(8, self.hparams.latent_size, device=self.device)
             x_sample = self(z_sample)
-            images = wandb.Image(
-                x_sample.reshape(xh_s[0] * 8, *xh_s[2:]), caption="Samples"
-            )
+            images = wandb.Image(x_sample.reshape(xh_s[0] * 8, *xh_s[2:]), caption="Samples")
             self.logger.experiment.log({"samples_epoch": images}, commit=False)
 
         return {"loss": loss, "latents": z_mu.detach(), "labels": y.detach()}
 
     def training_epoch_end(self, outputs):
         labels = torch.cat([o["labels"] for o in outputs], dim=0)
-        if outputs[0]['latents'].ndim < 3:
+        if outputs[0]["latents"].ndim < 3:
             latents = torch.cat([o["latents"] for o in outputs], dim=0)
             latents = latents.repeat(self.hparams.n_ensemble, 1).reshape(
                 self.hparams.n_ensemble, *latents.shape
@@ -73,9 +67,7 @@ class EVAE(VAE):
 
         n_points = 20
         z_sample = (
-            torch.stack(
-                torch.meshgrid([torch.linspace(-5, 5, n_points) for _ in range(2)])
-            )
+            torch.stack(torch.meshgrid([torch.linspace(-5, 5, n_points) for _ in range(2)]))
             .reshape(2, -1)
             .T
         )
@@ -106,9 +98,7 @@ class EVAE(VAE):
                 zorder=0,
             )
             plt.colorbar()
-            self.logger.experiment.log(
-                {f"latent_entropy_{n}": wandb.Image(plt)}, commit=False
-            )
+            self.logger.experiment.log({f"latent_entropy_{n}": wandb.Image(plt)}, commit=False)
             plt.clf()
 
         x_var_std = x_var.std(dim=0)
@@ -120,9 +110,7 @@ class EVAE(VAE):
             zorder=0,
         )
         plt.colorbar()
-        self.logger.experiment.log(
-            {"latent_entropy_std": wandb.Image(plt)}, commit=False
-        )
+        self.logger.experiment.log({"latent_entropy_std": wandb.Image(plt)}, commit=False)
         plt.clf()
 
         x_var_mean = x_var.mean(dim=0)
@@ -134,7 +122,5 @@ class EVAE(VAE):
             zorder=0,
         )
         plt.colorbar()
-        self.logger.experiment.log(
-            {"latent_entropy_mean": wandb.Image(plt)}, commit=False
-        )
+        self.logger.experiment.log({"latent_entropy_mean": wandb.Image(plt)}, commit=False)
         plt.clf()

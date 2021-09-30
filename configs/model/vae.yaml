@@ -1,0 +1,6 @@
+# @package _group_
+name: vae
+latent_size: 2
+kl_warmup_steps: 1000
+learning_rate: 1e-2
+reduce_lr_patience: 10

@@ -1,15 +1,16 @@
 from copy import deepcopy
+from itertools import chain
 
 import matplotlib.pyplot as plt
 import torch
+from pytorch_lightning.callbacks import EarlyStopping
+from torch import Tensor
+from torch import distributions as D
+from torch import nn
+
 import wandb
 from models.layers import EnsembleList, weight_reset
 from models.vae import VAE
-from torch import distributions as D
-from torch import nn, Tensor
-from pytorch_lightning.callbacks import EarlyStopping
-
-from itertools import chain
 
 
 class MEVAE(VAE):
@@ -17,28 +18,16 @@ class MEVAE(VAE):
         super().__init__(**kwargs)
 
         self.encoder = EnsembleList(
-            [
-                deepcopy(self.encoder).apply(weight_reset)
-                for _ in range(self.hparams.n_ensemble)
-            ]
+            [deepcopy(self.encoder).apply(weight_reset) for _ in range(self.hparams.n_ensemble)]
         )
         self.encoder_mu = EnsembleList(
-            [
-            deepcopy(self.encoder_mu).apply(weight_reset)
-            for _ in range(self.hparams.n_ensemble)
-            ]
+            [deepcopy(self.encoder_mu).apply(weight_reset) for _ in range(self.hparams.n_ensemble)]
         )
         self.encoder_std = EnsembleList(
-            [
-            deepcopy(self.encoder_std).apply(weight_reset)
-            for _ in range(self.hparams.n_ensemble)
-            ]
+            [deepcopy(self.encoder_std).apply(weight_reset) for _ in range(self.hparams.n_ensemble)]
         )
         self.decoder = EnsembleList(
-            [
-                deepcopy(self.decoder).apply(weight_reset)
-                for _ in range(self.hparams.n_ensemble)
-            ]
+            [deepcopy(self.decoder).apply(weight_reset) for _ in range(self.hparams.n_ensemble)]
         )
 
     def forward(self, z: Tensor) -> Tensor:
@@ -73,9 +62,7 @@ class MEVAE(VAE):
         n_points = 20
         x_var_mc, mc_samples = [], 50
         z_sample = (
-            torch.stack(
-                torch.meshgrid([torch.linspace(-5, 5, n_points) for _ in range(2)])
-            )
+            torch.stack(torch.meshgrid([torch.linspace(-5, 5, n_points) for _ in range(2)]))
             .reshape(2, -1)
             .T
         )
@@ -105,9 +92,5 @@ class MEVAE(VAE):
             zorder=0,
         )
         plt.colorbar()
-        self.logger.experiment.log(
-            {"latent_entropy_std": wandb.Image(plt)}, commit=False
-        )
+        self.logger.experiment.log({"latent_entropy_std": wandb.Image(plt)}, commit=False)
         plt.clf()
-
-    

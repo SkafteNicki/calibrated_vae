@@ -1,12 +1,14 @@
+from typing import Tuple
+
 import matplotlib.pyplot as plt
 import torch
-import wandb
-from models.layers import AdditiveRegularizer, Reshape
 from pytorch_lightning import LightningModule
 from torch import Tensor
 from torch import distributions as D
 from torch import nn
-from typing import Tuple
+
+import wandb
+from models.layers import AdditiveRegularizer, Reshape
 
 
 class VAE(LightningModule):
@@ -46,12 +48,13 @@ class VAE(LightningModule):
             nn.Sigmoid(),
         )
 
-        # warmup scaling
+        # warmup scaling of kl term
         self.warmup_steps = 0
 
         # recon loss
         self.recon = nn.BCELoss(reduction="none")
 
+        # storing prior
         self._prior = None
 
     @property
@@ -127,7 +130,29 @@ class VAE(LightningModule):
 
         return {"loss": loss, "latents": z_mu.detach(), "labels": y.detach()}
 
+    def validation_step(self, batch, batch_idx):
+        x, _ = batch
+        self._step(x, "val")
+
+    def test_step(self, batch, batch_idx):
+        x, _ = batch
+        self._step(x, "test")
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
+        scheduler = {
+            "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, mode="min", patience=self.hparams.reduce_lr_patience
+            ),
+            "monitor": "val_loss",
+            "strict": False,
+        }
+        return [optimizer], [scheduler]
+
     def training_epoch_end(self, outputs):
+        self.training_epoch_end_plotter(outputs)
+
+    def training_epoch_end_plotter(self, outputs, mmc_samples: int = 1):
         latents = torch.cat([o["latents"] for o in outputs], dim=0)
         labels = torch.cat([o["labels"] for o in outputs], dim=0)
 
@@ -146,15 +171,19 @@ class VAE(LightningModule):
 
         # plot latent variance
         n_points = 20
-        z_sample = (
-            torch.stack(
-                torch.meshgrid([torch.linspace(-5, 5, n_points) for _ in range(2)])
-            )
-            .reshape(2, -1)
-            .T
-        )
-        x_out = self(z_sample.to(self.device))
-        x_var = D.Bernoulli(probs=x_out).entropy().sum(dim=[1, 2, 3])
+        meshgrid = torch.meshgrid([torch.linspace(-5, 5, n_points) for _ in range(2)])
+        z_sample = torch.stack(meshgrid).reshape(2, -1).T
+
+        samples = [ ]
+        for _ in range(mmc_samples):
+            x_out = self(z_sample.to(self.device))
+            x_var = D.Bernoulli(probs=x_out).entropy().sum(dim=[1, 2, 3])
+            samples.append(x_var)
+
+        x_var = torch.stack(samples).mean(dim=0)
+        x_var_std = torch.stack(samples).std(dim=0)
+        x_var_std[torch.isnan(x_var_std)] = 0.
+
         plt.contourf(
             z_sample[:, 0].reshape(n_points, n_points),
             z_sample[:, 1].reshape(n_points, n_points),
@@ -166,21 +195,13 @@ class VAE(LightningModule):
         self.logger.experiment.log({"latent_entropy": wandb.Image(plt)}, commit=False)
         plt.clf()
 
-    def validation_step(self, batch, batch_idx):
-        x, _ = batch
-        self._step(x, "val")
-
-    def test_step(self, batch, batch_idx):
-        x, _ = batch
-        self._step(x, "test")
-
-    def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
-        scheduler = {
-            "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(
-                optimizer, mode="min", patience=int(self.hparams.patience / 2)
-            ),
-            "monitor": "val_loss",
-            "strict": False,
-        }
-        return [optimizer], [scheduler]
+        plt.contourf(
+            z_sample[:, 0].reshape(n_points, n_points),
+            z_sample[:, 1].reshape(n_points, n_points),
+            x_var_std.reshape(n_points, n_points).detach().cpu(),
+            levels=50,
+            zorder=0,
+        )
+        plt.colorbar()
+        self.logger.experiment.log({"latent_entropy_std": wandb.Image(plt)}, commit=False)
+        plt.clf()

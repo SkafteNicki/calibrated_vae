@@ -104,8 +104,7 @@ class StochasticWeightAveragingGaussian(Callback):
     @staticmethod
     def pl_module_contains_batch_norm(pl_module: "pl.LightningModule"):
         return any(
-            isinstance(module, nn.modules.batchnorm._BatchNorm)
-            for module in pl_module.modules()
+            isinstance(module, nn.modules.batchnorm._BatchNorm) for module in pl_module.modules()
         )
 
     def on_before_accelerator_backend_setup(
@@ -138,23 +137,15 @@ class StochasticWeightAveragingGaussian(Callback):
             # virtually increase max_epochs to perform batch norm update on latest epoch.
             trainer.fit_loop.max_epochs += 1
 
-    def on_train_epoch_start(
-        self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
-    ):
+    def on_train_epoch_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"):
         if trainer.current_epoch == self.swa_start:
             # move average model to request device.
-            self._average_model = self._average_model.to(
-                self._device or pl_module.device
-            )
-            self._squared_model = self._squared_model.to(
-                self._device or pl_module.device
-            )
+            self._average_model = self._average_model.to(self._device or pl_module.device)
+            self._squared_model = self._squared_model.to(self._device or pl_module.device)
 
             optimizer = trainer.optimizers[0]
             if self._swa_lrs is None:
-                self._swa_lrs = [
-                    param_group["lr"] for param_group in optimizer.param_groups
-                ]
+                self._swa_lrs = [param_group["lr"] for param_group in optimizer.param_groups]
             if isinstance(self._swa_lrs, float):
                 self._swa_lrs = [self._swa_lrs] * len(optimizer.param_groups)
 
@@ -166,9 +157,7 @@ class StochasticWeightAveragingGaussian(Callback):
                 swa_lr=self._swa_lrs,
                 anneal_epochs=self._annealing_epochs,
                 anneal_strategy=self._annealing_strategy,
-                last_epoch=trainer.max_epochs
-                if self._annealing_strategy == "cos"
-                else -1,
+                last_epoch=trainer.max_epochs if self._annealing_strategy == "cos" else -1,
             )
             default_scheduler_cfg = _get_default_scheduler_config()
             assert (
@@ -179,10 +168,7 @@ class StochasticWeightAveragingGaussian(Callback):
 
             if trainer.lr_schedulers:
                 scheduler_cfg = trainer.lr_schedulers[0]
-                if (
-                    scheduler_cfg["interval"] != "epoch"
-                    or scheduler_cfg["frequency"] != 1
-                ):
+                if scheduler_cfg["interval"] != "epoch" or scheduler_cfg["frequency"] != 1:
                     rank_zero_warn(
                         f"SWA is currently only supported every epoch. Found {scheduler_cfg}"
                     )
@@ -234,10 +220,7 @@ class StochasticWeightAveragingGaussian(Callback):
         trainer.fit_loop._skip_backward = False
 
     def on_train_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"):
-        if (
-            self._model_contains_batch_norm
-            and trainer.current_epoch == self.swa_end + 1
-        ):
+        if self._model_contains_batch_norm and trainer.current_epoch == self.swa_end + 1:
             # BatchNorm epoch update. Reset state
             trainer.accumulate_grad_batches = self._accumulate_grad_batches
             trainer.num_training_batches -= 1
@@ -248,12 +231,8 @@ class StochasticWeightAveragingGaussian(Callback):
             self.transfer_weights(self._average_model, pl_module)
 
     @staticmethod
-    def transfer_weights(
-        src_pl_module: "pl.LightningModule", dst_pl_module: "pl.LightningModule"
-    ):
-        for src_param, dst_param in zip(
-            src_pl_module.parameters(), dst_pl_module.parameters()
-        ):
+    def transfer_weights(src_pl_module: "pl.LightningModule", dst_pl_module: "pl.LightningModule"):
+        for src_param, dst_param in zip(src_pl_module.parameters(), dst_pl_module.parameters()):
             dst_param.detach().copy_(src_param.to(dst_param.device))
 
     def reset_batch_norm_and_save_state(self, pl_module: "pl.LightningModule"):
@@ -302,9 +281,7 @@ class StochasticWeightAveragingGaussian(Callback):
                 )
             else:
                 src = (
-                    p_model_
-                    if n_averaged == 0
-                    else avg_fn(p_swa_, p_model_, n_averaged.to(device))
+                    p_model_ if n_averaged == 0 else avg_fn(p_swa_, p_model_, n_averaged.to(device))
                 )
             p_swa_.copy_(src)
         n_averaged += 1
@@ -316,6 +293,6 @@ class StochasticWeightAveragingGaussian(Callback):
         num_averaged: torch.LongTensor,
     ) -> torch.FloatTensor:
         """Adapted from https://github.com/pytorch/pytorch/blob/v1.7.1/torch/optim/swa_utils.py#L95-L97."""
-        return averaged_model_parameter + (
-            model_parameter - averaged_model_parameter
-        ) / (num_averaged + 1)
+        return averaged_model_parameter + (model_parameter - averaged_model_parameter) / (
+            num_averaged + 1
+        )

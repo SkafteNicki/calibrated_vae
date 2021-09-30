@@ -1,4 +1,5 @@
 wandb/
-checkpoints/
+outputs/
 MNIST/
 __pycache__/
+bayesianize

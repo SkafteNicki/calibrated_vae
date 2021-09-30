@@ -1,15 +1,16 @@
 from copy import deepcopy
+from itertools import chain
 
 import matplotlib.pyplot as plt
 import torch
-import wandb
-from models.layers import EnsembleList, weight_reset
-from models.ensample import EVAE
-from torch import distributions as D
-from torch import nn, Tensor
 from pytorch_lightning.callbacks import EarlyStopping
+from torch import Tensor
+from torch import distributions as D
+from torch import nn
 
-from itertools import chain
+import wandb
+from models.ensample import EVAE
+from models.layers import EnsembleList, weight_reset
 
 
 class DEVAE(EVAE):
@@ -17,22 +18,13 @@ class DEVAE(EVAE):
         super().__init__(**kwargs)
 
         self.encoder2 = EnsembleList(
-            [
-                deepcopy(self.encoder).apply(weight_reset)
-                for _ in range(self.hparams.n_ensemble)
-            ]
+            [deepcopy(self.encoder).apply(weight_reset) for _ in range(self.hparams.n_ensemble)]
         )
         self.encoder_mu2 = EnsembleList(
-            [
-            deepcopy(self.encoder_mu).apply(weight_reset)
-            for _ in range(self.hparams.n_ensemble)
-            ]
+            [deepcopy(self.encoder_mu).apply(weight_reset) for _ in range(self.hparams.n_ensemble)]
         )
         self.encoder_std2 = EnsembleList(
-            [
-            deepcopy(self.encoder_std).apply(weight_reset)
-            for _ in range(self.hparams.n_ensemble)
-            ]
+            [deepcopy(self.encoder_std).apply(weight_reset) for _ in range(self.hparams.n_ensemble)]
         )
 
         self.switch = True
@@ -56,7 +48,7 @@ class DEVAE(EVAE):
         optimizer.zero_grad()
 
         output_dict = super().training_step(batch, batch_idx)
-        loss = output_dict['loss']
+        loss = output_dict["loss"]
 
         self.manual_backward(loss)
         optimizer.step()
@@ -64,8 +56,23 @@ class DEVAE(EVAE):
         return output_dict
 
     def configure_optimizers(self):
-        optimizer1 = torch.optim.Adam(chain(self.encoder.parameters(), self.encoder_mu.parameters(), self.encoder_std.parameters(), self.decoder.parameters()), lr=self.hparams.learning_rate)
-        optimizer2 = torch.optim.Adam(chain(self.encoder2.parameters(), self.encoder_mu2.parameters(), self.encoder_std2.parameters()), lr=self.hparams.learning_rate)
+        optimizer1 = torch.optim.Adam(
+            chain(
+                self.encoder.parameters(),
+                self.encoder_mu.parameters(),
+                self.encoder_std.parameters(),
+                self.decoder.parameters(),
+            ),
+            lr=self.hparams.learning_rate,
+        )
+        optimizer2 = torch.optim.Adam(
+            chain(
+                self.encoder2.parameters(),
+                self.encoder_mu2.parameters(),
+                self.encoder_std2.parameters(),
+            ),
+            lr=self.hparams.learning_rate,
+        )
         scheduler1 = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer1, mode="min", patience=int(self.hparams.patience / 2)
         )
@@ -94,7 +101,3 @@ class DEVAE(EVAE):
                     cb.on_init_end(self.trainer)
 
             self.stop_counter += 1
-
-            
-        
-

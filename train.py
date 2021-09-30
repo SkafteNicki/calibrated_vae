@@ -1,64 +1,55 @@
 from argparse import ArgumentParser
 
 import pytorch_lightning as pl
-from data.datamodules import MnistDatamodule
-from models import EVAE, MCVAE, NVAE, VAE, DEVAE, MEVAE
+from data import get_data
+from models import get_model
 from pytorch_lightning.core import datamodule
+import os
+import hydra
+from hydra.utils import get_original_cwd
+from omegaconf import DictConfig
+import logging
+log = logging.getLogger(__name__)
 
-if __name__ == "__main__":
-    # Argument parsing
-    parser = ArgumentParser()
-    parser.add_argument("model", type=str, default="")
-    parser.add_argument("--data_dir", type=str, default="")
-    parser.add_argument(
-        "--labels_to_use", nargs="+", type=int, default=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-    )
-    parser.add_argument("--batch_size", type=int, default=64)
-    parser.add_argument("--kl_warmup_steps", type=int, default=1)
-    parser.add_argument("--latent_size", type=int, default=2)
-    parser.add_argument("--learning_rate", type=float, default=1e-2)
-    parser.add_argument("--prob", type=float, default=0.05)
-    parser.add_argument("--patience", type=int, default=10)
-    parser.add_argument("--n_ensemble", type=int, default=5)
-    parser = pl.Trainer.add_argparse_args(parser)
-    args = parser.parse_args()
 
-    if args.model == "VAE":
-        model_class = VAE
-    elif args.model == "MCVAE":
-        model_class = MCVAE
-    elif args.model == "EVAE":
-        model_class = EVAE
-    elif args.model == "NVAE":
-        model_class = NVAE
-    elif args.model == "DEVAE":
-        model_class = DEVAE
-    elif args.model == "MEVAE":
-        model_class = MEVAE
+@hydra.main(config_path="configs", config_name="train")
+def train(config: DictConfig):
+    log.info(f"Working directory : {os.getcwd()}")
+    log.info(f"Config {config}")
 
-    datamodule = MnistDatamodule(args.data_dir, args.labels_to_use)
+    # Initialize model
+    model_class = get_model(config.model.name)
+    model = model_class(**config.model)
 
+    # Initialize data
+    config.dataset.data_dir = get_original_cwd()
+    datamodule_class = get_data(config.dataset.name)
+    datamodule = datamodule_class(**config.dataset)
+    
     checkpointer = pl.callbacks.ModelCheckpoint(
-        dirpath="checkpoints/", monitor="val_loss", mode="min"
+        dirpath=f"{os.getcwd()}/checkpoints/", monitor="val_loss", mode="min"
     )
 
     stopper = pl.callbacks.EarlyStopping(
         monitor="val_loss",
         mode="min",
-        patience=args.patience,
+        patience=config.early_stopping_patience,
     )
 
-    trainer = pl.Trainer.from_argparse_args(
-        args,
+    trainer = pl.Trainer(
+        gpus=config.gpus,
         logger=pl.loggers.WandbLogger(project="calibrated_vae"),
         callbacks=[
-            checkpointer,
-            stopper,
-            pl.callbacks.LearningRateMonitor(),
-            
-        ] + [pl.callbacks.GPUStatsMonitor()] if args.gpus else [],
+                checkpointer,
+                stopper,
+                pl.callbacks.LearningRateMonitor(),            
+        ] + [pl.callbacks.GPUStatsMonitor()] if config.gpus else [],
     )
 
-    model = model_class(**vars(args))
-
     trainer.fit(model, datamodule=datamodule)
+    trainer.test(model, datamodule=datamodule)
+
+
+
+if __name__ == "__main__":
+    train()

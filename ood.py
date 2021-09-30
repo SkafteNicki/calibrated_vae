@@ -1,8 +1,9 @@
-from pytorch_lightning.core import datamodule
-import torch
-from torch import distributions as D
-import seaborn as sns
 import numpy as np
+import seaborn as sns
+import torch
+from pytorch_lightning.core import datamodule
+from torch import distributions as D
+
 
 def run_ood(model, datamodule):
     log_probs = []
@@ -15,8 +16,8 @@ def run_ood(model, datamodule):
     log_probs = torch.stack(log_probs)
     return log_probs
 
+
 if __name__ == "__main__":
-    
 
     model = model_class.load_from_checkpoint(args.model_checkpoint)
     model.eval()
@@ -26,21 +27,10 @@ if __name__ == "__main__":
     scores1 = run_ood(model, datamodule1)
     scores2 = run_ood(model, datamodule2)
 
-    torch.save(scores1, 'results1.pt')
-    torch.save(scores2, 'results2.pt')
+    torch.save(scores1, "results1.pt")
+    torch.save(scores2, "results2.pt")
 
     if args.plot_this:
         combined = np.array([scores1, scores2])
 
-        sns.histplot(combined, x='log prob', y='Procentage samples')
-
-
-
-        
-
-    
-
-
-
-
-
+        sns.histplot(combined, x="log prob", y="Procentage samples")

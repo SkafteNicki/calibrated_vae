@@ -2,14 +2,15 @@ from copy import deepcopy
 
 import matplotlib.pyplot as plt
 import torch
+from torch import Tensor
+from torch import distributions as D
+from torch import nn
+
 import wandb
 from models.layers import (AdditiveRegularizer, NormalSigmoidResample,
                            weight_reset)
 from models.mc_dropout import MCVAE
 from models.vae import VAE
-from torch import Tensor
-from torch import distributions as D
-from torch import nn
 
 
 class NVAE(VAE):
@@ -33,9 +34,7 @@ class NVAE(VAE):
             self.log("adjusted_training_loss", output_dict["loss"], prog_bar=True)
             # plot std images
             if batch_idx == 0:
-                self.logger.experiment.log(
-                    {"std": wandb.Image(std[:8].detach())}, commit=False
-                )
+                self.logger.experiment.log({"std": wandb.Image(std[:8].detach())}, commit=False)
 
         return output_dict
 
@@ -60,9 +59,7 @@ class NVAE(VAE):
         n_points = 20
         x_var_mc, mc_samples = [], 50
         z_sample = (
-            torch.stack(
-                torch.meshgrid([torch.linspace(-5, 5, n_points) for _ in range(2)])
-            )
+            torch.stack(torch.meshgrid([torch.linspace(-5, 5, n_points) for _ in range(2)]))
             .reshape(2, -1)
             .T
         )
@@ -92,9 +89,7 @@ class NVAE(VAE):
             zorder=0,
         )
         plt.colorbar()
-        self.logger.experiment.log(
-            {"latent_entropy_std": wandb.Image(plt)}, commit=False
-        )
+        self.logger.experiment.log({"latent_entropy_std": wandb.Image(plt)}, commit=False)
         plt.clf()
 
         std = self.decoder._std_out
@@ -107,7 +102,5 @@ class NVAE(VAE):
                 zorder=0,
             )
             plt.colorbar()
-            self.logger.experiment.log(
-                {"latent_entropy_std_2": wandb.Image(plt)}, commit=False
-            )
+            self.logger.experiment.log({"latent_entropy_std_2": wandb.Image(plt)}, commit=False)
             plt.clf()
