@@ -1,6 +1,0 @@
-defaults:
-  - model: vae
-  - dataset: mnist01
-
-early_stopping_patience: 20
-gpus: 1

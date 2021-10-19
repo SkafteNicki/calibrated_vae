@@ -142,7 +142,7 @@ class VAE(LightningModule):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
         scheduler = {
             "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(
-                optimizer, mode="min", patience=self.hparams.reduce_lr_patience
+                optimizer, mode="min", patience=int(self.hparams.patience / 2)
             ),
             "monitor": "val_loss",
             "strict": False,
@@ -152,7 +152,7 @@ class VAE(LightningModule):
     def training_epoch_end(self, outputs):
         self.training_epoch_end_plotter(outputs)
 
-    def training_epoch_end_plotter(self, outputs, mmc_samples: int = 1):
+    def training_epoch_end_plotter(self, outputs, mc_samples: int = 1):
         latents = torch.cat([o["latents"] for o in outputs], dim=0)
         labels = torch.cat([o["labels"] for o in outputs], dim=0)
 
@@ -175,7 +175,7 @@ class VAE(LightningModule):
         z_sample = torch.stack(meshgrid).reshape(2, -1).T
 
         samples = [ ]
-        for _ in range(mmc_samples):
+        for _ in range(mc_samples):
             x_out = self(z_sample.to(self.device))
             x_var = D.Bernoulli(probs=x_out).entropy().sum(dim=[1, 2, 3])
             samples.append(x_var)

@@ -10,7 +10,7 @@ from torchvision.datasets import MNIST
 
 
 class MoonsDatamodule(LightningDataModule):
-    def __init__(self):
+    def __init__(self, **kwargs):
         super().__init__()
         Xtrain = np.zeros((500, 4))
         with open("data/data_v2.csv") as csvfile:
@@ -49,6 +49,7 @@ class MnistDatamodule(LightningDataModule):
         data_dir: str = "",
         labels_to_use=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
         batch_size: int = 64,
+        **kwargs
     ):
         super().__init__()
         self.name = name
@@ -97,6 +98,22 @@ class MnistDatamodule(LightningDataModule):
 
     def test_dataloader(self):
         return DataLoader(self.test, batch_size=self.batch_size)
+
+
+class SmallMnistDatamodule(MnistDatamodule):
+    def __init__(
+        self,
+        name: str = "mnist",
+        data_dir: str = "",
+        batch_size: int = 64,
+        **kwargs
+    ):
+        super().__init__(
+            name=name,
+            data_dir=data_dir,
+            labels_to_use=[0, 1],
+            batch_size=batch_size
+        )
 
 
 if __name__ == "__main__":

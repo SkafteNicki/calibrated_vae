@@ -1,5 +1,0 @@
-# @package _group_
-name: 'mnist'
-data_dir: ""
-labels_to_use: [0,1]
-batch_size: 64

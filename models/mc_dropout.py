@@ -13,21 +13,26 @@ class MCVAE(VAE):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.encoder = nn.Sequential(
-            nn.Conv2d(1, 32, 3, stride=2),
-            nn.LeakyReLU(),
-            nn.Conv2d(32, 64, 3, stride=2),
-            nn.LeakyReLU(),
-            nn.Conv2d(64, 128, 3, stride=2),
-            nn.LeakyReLU(),
-            nn.Flatten(),
-        )
-        self.encoder_mu = nn.Linear(512, self.hparams.latent_size)
-        self.encoder_std = nn.Sequential(
-            nn.Linear(512, self.hparams.latent_size),
-            nn.Softplus(),
-            AdditiveRegularizer(),
-        )
+        if not self.hparams.only_decoder_mc:
+            self.encoder = nn.Sequential(
+                nn.Conv2d(1, 32, 3, stride=2),
+                MCDropout2d(p=self.hparams.prob),
+                nn.LeakyReLU(),
+                nn.Conv2d(32, 64, 3, stride=2),
+                MCDropout2d(p=self.hparams.prob),
+                nn.LeakyReLU(),
+                nn.Conv2d(64, 128, 3, stride=2),
+                MCDropout2d(p=self.hparams.prob),
+                nn.LeakyReLU(),
+                nn.Flatten(),
+            )
+            self.encoder_mu = nn.Linear(512, self.hparams.latent_size)
+            self.encoder_std = nn.Sequential(
+                nn.Linear(512, self.hparams.latent_size),
+                MCDropout(p=self.hparams.prob),
+                nn.Softplus(),
+                AdditiveRegularizer(),
+            )
 
         self.decoder = nn.Sequential(
             nn.Linear(self.hparams.latent_size, 128),
@@ -52,4 +57,4 @@ class MCVAE(VAE):
         )
 
     def training_epoch_end(self, outputs):
-        self.training_epoch_end_plotter(outputs, mmc_samples=50)
+        self.training_epoch_end_plotter(outputs, mc_samples=self.hparams.mc_samples)

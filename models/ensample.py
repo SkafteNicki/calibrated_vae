@@ -122,5 +122,5 @@ class EVAE(VAE):
             zorder=0,
         )
         plt.colorbar()
-        self.logger.experiment.log({"latent_entropy_mean": wandb.Image(plt)}, commit=False)
+        self.logger.experiment.log({"latent_entropy": wandb.Image(plt)}, commit=False)
         plt.clf()
