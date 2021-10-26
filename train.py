@@ -17,20 +17,14 @@ def train(args):
     datamodule_class = get_data(args.dataset)
     datamodule = datamodule_class(**vars(args))
 
-
     # Initialize callbacks
-    callbacks = [ ]
+    callbacks = []
     callbacks.append(
-        pl.callbacks.ModelCheckpoint(
-            dirpath="checkpoints", monitor="val_loss", mode="min"
-        )
+        pl.callbacks.ModelCheckpoint(dirpath="checkpoints", monitor="val_loss", mode="min")
     )
     callbacks.append(
         pl.callbacks.EarlyStopping(
-            monitor="val_loss",
-            mode="min",
-            patience=args.patience,
-            verbose=True
+            monitor="val_loss", mode="min", patience=args.patience, verbose=True
         )
     )
     callbacks.append(pl.callbacks.LearningRateMonitor())
@@ -39,9 +33,7 @@ def train(args):
 
     # Initialize trainer
     trainer = pl.Trainer.from_argparse_args(
-        args,
-        logger=pl.loggers.WandbLogger(project="calibrated_vae"),
-        callbacks=callbacks
+        args, logger=pl.loggers.WandbLogger(project="calibrated_vae"), callbacks=callbacks
     )
 
     # Train and test!

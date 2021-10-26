@@ -101,19 +101,8 @@ class MnistDatamodule(LightningDataModule):
 
 
 class SmallMnistDatamodule(MnistDatamodule):
-    def __init__(
-        self,
-        name: str = "mnist",
-        data_dir: str = "",
-        batch_size: int = 64,
-        **kwargs
-    ):
-        super().__init__(
-            name=name,
-            data_dir=data_dir,
-            labels_to_use=[0, 1],
-            batch_size=batch_size
-        )
+    def __init__(self, name: str = "mnist", data_dir: str = "", batch_size: int = 64, **kwargs):
+        super().__init__(name=name, data_dir=data_dir, labels_to_use=[0, 1], batch_size=batch_size)
 
 
 if __name__ == "__main__":

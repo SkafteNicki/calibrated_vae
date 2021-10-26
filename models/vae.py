@@ -61,10 +61,13 @@ class VAE(LightningModule):
     def prior(self):
         if self._prior is None:
             ls = self.hparams.latent_size
-            self._prior = D.Independent(D.Normal(
-                torch.zeros(1, ls, device=self.device),
-                torch.ones(1, ls, device=self.device),
-            ), 1)
+            self._prior = D.Independent(
+                D.Normal(
+                    torch.zeros(1, ls, device=self.device),
+                    torch.ones(1, ls, device=self.device),
+                ),
+                1,
+            )
         return self._prior
 
     @property
@@ -174,7 +177,7 @@ class VAE(LightningModule):
         meshgrid = torch.meshgrid([torch.linspace(-5, 5, n_points) for _ in range(2)])
         z_sample = torch.stack(meshgrid).reshape(2, -1).T
 
-        samples = [ ]
+        samples = []
         for _ in range(mc_samples):
             x_out = self(z_sample.to(self.device))
             x_var = D.Bernoulli(probs=x_out).entropy().sum(dim=[1, 2, 3])
@@ -182,7 +185,7 @@ class VAE(LightningModule):
 
         x_var = torch.stack(samples).mean(dim=0)
         x_var_std = torch.stack(samples).std(dim=0)
-        x_var_std[torch.isnan(x_var_std)] = 0.
+        x_var_std[torch.isnan(x_var_std)] = 0.0
 
         plt.contourf(
             z_sample[:, 0].reshape(n_points, n_points),
