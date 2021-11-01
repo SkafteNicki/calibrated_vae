@@ -1,5 +1,6 @@
 import os
 from argparse import ArgumentParser
+from shutil import copyfile
 
 import pytorch_lightning as pl
 
@@ -38,14 +39,22 @@ def train(args):
 
     # Train and test!
     trainer.fit(model, datamodule=datamodule)
-    trainer.test(model, datamodule=datamodule)
+    trainer.test(model, datamodule=datamodule, ckpt_path='best')
+
+    # Save the model and last model
+    logger_dir = model.logger.experiment.dir+'\\checkpoints'
+    os.makedirs(logger_dir, exist_ok=True)
+    best_model_path = callbacks[0].best_model_path
+    copyfile(best_model_path, logger_dir+'\\best_model.ckpt')
+    trainer.save_checkpoint(logger_dir+'\\final_model.ckpt')
 
 
 if __name__ == "__main__":
     # Common arguments
     parser = ArgumentParser()
     parser.add_argument("model", type=str, default="")
-    parser.add_argument("--dataset", type=str, default="small_mnist")
+    parser.add_argument("--dataset", type=str, default="mnist01")
+    parser.add_argument("--seed", type=int, default=123)
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--kl_warmup_steps", type=int, default=1000)
     parser.add_argument("--latent_size", type=int, default=2)
@@ -61,5 +70,7 @@ if __name__ == "__main__":
 
     parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
+
+    pl.seed_everything(args.seed)
 
     train(args)

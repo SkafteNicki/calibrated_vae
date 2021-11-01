@@ -1,9 +1,10 @@
 from argparse import ArgumentParser
+from itertools import chain
 
 import numpy as np
 import seaborn as sns
 import torch
-from pytorch_lightning.core import datamodule
+from pytorch_lightning import Trainer
 from torch import distributions as D
 import pandas as pd
 
@@ -11,16 +12,32 @@ from models import get_model
 from data import get_data
 
 
-def calc_log_probs(model, dataloader):
-    log_probs = []
-    with torch.no_grad():
-        for batch in dataloader:
-            x, y = batch
-            _, _, x_hat, _ = model.encode_decode(x)
-            d = D.Independent(D.Bernoulli(probs=x_hat), 3)
-            log_probs.append(d.log_prob(x))
-    log_probs = torch.cat(log_probs, dim=0)
-    return log_probs
+def calc_log_probs(
+        model, 
+        train_dataloader,
+        test_dataloader,
+        refit_encoder: bool = False
+    ):
+    
+    if refit_encoder:
+        optimizer = torch.optim.Adam(chain(model.encoder, model.encoder_mu, model.encoder_std), lr=1e-3)
+        for _ in range(10):
+            for batch in train_dataloader:
+                optimizer.zero_grad()
+                loss = model.training_step(batch)
+                loss.backward()
+                optimizer.step()
+
+    log_probs_train = model.calc_log_probs(train_dataloader)
+    log_probs_test = model.calc_log_probs(test_dataloader)
+
+    dataframe = pd.DataFrame(
+        torch.cat([log_probs_train, log_probs_test]).numpy(), columns=['log_probs']
+    )
+    dataframe['split'] = len(log_probs_train) * ['train'] + len(log_probs_test) * ['test']
+    dataframe['refit'] = refit_encoder
+
+    return dataframe
 
 
 if __name__ == "__main__":
@@ -28,6 +45,7 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("model", type=str, default="")
     parser.add_argument("checkpoint", type=str, default="")
+    parser.add_argument("dataset", type=str, default="")
     parser.add_argument("--batch_size", type=int, default=128)
     args = parser.parse_args()
 
@@ -35,17 +53,19 @@ if __name__ == "__main__":
     model = model_class.load_from_checkpoint(args.checkpoint)
     model.eval()
 
-    datamodule_class = get_data('small_mnist')
+    datamodule_class = get_data(args.dataset)
     datamodule = datamodule_class(batch_size=args.batch_size)
     datamodule.setup()
 
-    log_probs_train = calc_log_probs(model, datamodule.train_dataloader())
-    log_probs_test = calc_log_probs(model, datamodule.test_dataloader())
-
-    dataframe = pd.DataFrame(
-        torch.cat([log_probs_train, log_probs_test]).numpy(), columns=['log_probs']
+    dataframe = calc_log_probs(
+        model, datamodule.train_dataloader(), datamodule.test_dataloader(),
     )
-    dataframe['split'] = len(log_probs_train) * ['train'] + len(log_probs_test) * ['test']
+    dataframe_refit = calc_log_probs(
+        model, datamodule.train_dataloader(), datamodule.test_dataloader(),
+        refit_encoder=True
+    )
+    pd.cat(dataframe, dataframe_refit)
+
 
     sns.histplot(dataframe, x='log_probs', hue='split')
 

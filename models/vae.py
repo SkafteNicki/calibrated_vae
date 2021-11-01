@@ -6,6 +6,7 @@ from pytorch_lightning import LightningModule
 from torch import Tensor
 from torch import distributions as D
 from torch import nn
+from torch.utils.data.dataloader import DataLoader
 
 import wandb
 from models.layers import AdditiveRegularizer, Reshape
@@ -98,6 +99,20 @@ class VAE(LightningModule):
         dist = D.Independent(D.Bernoulli(probs=x_hat), 3)
         return dist.log_prob(x)
 
+    def calc_log_prob(self, dataloader: DataLoader) -> Tensor:
+        current_state = self.training
+        self.eval()
+        log_probs = []
+        with torch.no_grad():
+            for batch in dataloader:
+                x, _ = batch
+                _, _, x_hat, _ = self.encode_decode(x)
+                d = D.Independent(D.Bernoulli(probs=x_hat), 3)
+                log_probs.append(d.log_prob(x))
+        log_probs = torch.cat(log_probs, dim=0)
+        self.training = current_state
+        return log_probs
+
     def _step(self, x, state):
         z_mu, z_std, x_hat, kl = self.encode_decode(x)
 
@@ -145,7 +160,7 @@ class VAE(LightningModule):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
         scheduler = {
             "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(
-                optimizer, mode="min", patience=int(self.hparams.patience / 2)
+                optimizer, mode="min", patience=int(self.hparams.patience / 2), verbose=True
             ),
             "monitor": "val_loss",
             "strict": False,

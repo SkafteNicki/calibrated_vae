@@ -45,14 +45,12 @@ class MoonsDatamodule(LightningDataModule):
 class MnistDatamodule(LightningDataModule):
     def __init__(
         self,
-        name: str = "mnist",
         data_dir: str = "",
         labels_to_use=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
         batch_size: int = 64,
         **kwargs
     ):
         super().__init__()
-        self.name = name
         self.data_dir = data_dir
         self.labels_to_use = labels_to_use
         self.batch_size = batch_size
@@ -100,10 +98,13 @@ class MnistDatamodule(LightningDataModule):
         return DataLoader(self.test, batch_size=self.batch_size)
 
 
-class SmallMnistDatamodule(MnistDatamodule):
+class Mnist01Datamodule(MnistDatamodule):
     def __init__(self, name: str = "mnist", data_dir: str = "", batch_size: int = 64, **kwargs):
         super().__init__(name=name, data_dir=data_dir, labels_to_use=[0, 1], batch_size=batch_size)
 
+class Mnist23DataModule(MnistDatamodule):
+    def __init__(self, name: str = "mnist", data_dir: str = "", batch_size: int = 64, **kwargs):
+        super().__init__(name=name, data_dir=data_dir, labels_to_use=[2, 3], batch_size=batch_size)
 
 if __name__ == "__main__":
     datamodule = MnistDatamodule(labels_to_use=[0, 1])
