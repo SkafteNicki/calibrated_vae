@@ -7,6 +7,7 @@ from pytorch_lightning.callbacks import EarlyStopping
 from torch import Tensor
 from torch import distributions as D
 from torch import nn
+from torch.utils.data import DataLoader
 
 import wandb
 from models.layers import EnsembleList, weight_reset
@@ -40,6 +41,27 @@ class MEVAE(VAE):
         z_mu = self.encoder_mu[idx](h)
         z_std = self.encoder_std[idx](h)
         return z_mu, z_std
+
+    def calc_log_prob(self, dataloader: DataLoader) -> Tensor:
+        current_state = self.training
+        self.eval()
+        log_probs = []
+        with torch.no_grad():
+            for batch in dataloader:
+                x_hats = []
+                for _ in range(self.hparams.mc_samples):
+                    x, _ = batch
+                    _, _, x_hat, _ = self.encode_decode(x)
+                    x_hats.append(x_hat)
+                x_hats=torch.stack(x_hats)
+                d = D.MixtureSameFamily(
+                    D.Categorical(torch.ones(self.hparams.mc_samples)),
+                    D.Independent(D.Bernoulli(probs=x_hat), 3)
+                )
+                log_probs.append(d.log_prob(x))
+        log_probs = torch.cat(log_probs, dim=0)
+        self.training = current_state
+        return log_probs
 
     def training_epoch_end(self, outputs):
         latents = torch.cat([o["latents"] for o in outputs], dim=0)

@@ -60,7 +60,8 @@ class VAE(LightningModule):
 
     @property
     def prior(self):
-        if self._prior is None:
+        if self._prior is None or \
+            (self._prior is not None and self._prior.base_dist.loc.device != self.device):
             ls = self.hparams.latent_size
             self._prior = D.Independent(
                 D.Normal(
@@ -131,6 +132,7 @@ class VAE(LightningModule):
     def training_step(self, batch, batch_idx=0):
         x, y = batch
         loss, z_mu, _, x_hat = self._step(x, "train")
+        
         if batch_idx == 0:
 
             # plot reconstructions

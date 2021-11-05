@@ -32,21 +32,16 @@ def train(args):
     if args.gpus:
         callbacks.append(pl.callbacks.GPUStatsMonitor())
 
+    # Initialize logger
+    logger = pl.loggers.WandbLogger(project="calibrated_vae", log_model='all')
+    #logger.watch(model, log='all', log_freq=100, log_graph=True)
+
     # Initialize trainer
-    trainer = pl.Trainer.from_argparse_args(
-        args, logger=pl.loggers.WandbLogger(project="calibrated_vae"), callbacks=callbacks
-    )
+    trainer = pl.Trainer.from_argparse_args(args, logger=logger, callbacks=callbacks)
 
     # Train and test!
     trainer.fit(model, datamodule=datamodule)
     trainer.test(model, datamodule=datamodule, ckpt_path='best')
-
-    # Save the model and last model
-    logger_dir = model.logger.experiment.dir+'\\checkpoints'
-    os.makedirs(logger_dir, exist_ok=True)
-    best_model_path = callbacks[0].best_model_path
-    copyfile(best_model_path, logger_dir+'\\best_model.ckpt')
-    trainer.save_checkpoint(logger_dir+'\\final_model.ckpt')
 
 
 if __name__ == "__main__":
