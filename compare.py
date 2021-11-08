@@ -53,25 +53,43 @@ if __name__ == "__main__":
     dataframe['dataset'] = n1 * ['mnist01'] + n2 * ['mnist23']
     dataframe['dataset_class'] = n1 * [0] + n2 * [1]
 
-    plt.figure()
-    sns.histplot(data=dataframe, x='entropy', hue='dataset')
+    #plt.figure()
+    #sns.histplot(data=dataframe, x='entropy', hue='dataset')
 
-    plt.figure()
-    sns.histplot(data=dataframe, x='log_probs', hue='dataset')
+    #plt.figure()
+    #sns.histplot(data=dataframe, x='log_probs', hue='dataset')
     
-    plt.show()
+    #plt.show()
 
-    acc1, acc2 = [ ], [ ]
-    thredshols = np.linspace(0, 10, 1000)
-    for t in thredshols:
-        classifier = dataframe['entropy'] > t
-        acc1.append(
-            (classifier.to_numpy().astype('int') == dataframe['dataset_class'].to_numpy()).mean()
-        )
-        classifier = dataframe['log_probs'] > t
-        acc2.append(
-            (classifier.to_numpy().astype('int') == dataframe['dataset_class'].to_numpy()).mean()
-        )
-    acc1, acc2 = np.array(acc1), np.array(acc2)
-    print(f"best threshold for entropy {thredshols[np.argmax(acc1)]} with acc {np.max(acc1)}")
-    print(f"best threshold for entropy {thredshols[np.argmax(acc2)]} with acc {np.max(acc2)}")
+#    acc1, acc2 = [ ], [ ]
+#    thredshols = np.linspace(0, 10, 1000)
+#    for t in thredshols:
+#        classifier = dataframe['entropy'] > t
+#        acc1.append(
+#            (classifier.to_numpy().astype('int') == dataframe['dataset_class'].to_numpy()).mean()
+#        )
+#        classifier = dataframe['log_probs'] > t
+#        acc2.append(
+#            (classifier.to_numpy().astype('int') == dataframe['dataset_class'].to_numpy()).mean()
+#        )
+#    acc1, acc2 = np.array(acc1), np.array(acc2)
+#    print(f"best threshold for entropy {thredshols[np.argmax(acc1)]} with acc {np.max(acc1)}")
+#    print(f"best threshold for entropy {thredshols[np.argmax(acc2)]} with acc {np.max(acc2)}")
+
+    from sklearn.metrics import roc_auc_score, roc_curve, RocCurveDisplay
+    roc_entropy = roc_curve(dataframe['dataset_class'].to_numpy(), dataframe['entropy'].to_numpy())
+    roc_log_probs = roc_curve(dataframe['dataset_class'].to_numpy(), dataframe['log_probs'].to_numpy())
+    auroc_entropy = roc_auc_score(dataframe['dataset_class'].to_numpy(), dataframe['entropy'].to_numpy())
+    auroc_roc_log_probs = roc_auc_score(dataframe['dataset_class'].to_numpy(), dataframe['log_probs'].to_numpy())
+
+    plt.figure()
+    plt.title('Receiver Operating Characteristic')
+    plt.plot(roc_entropy[0], roc_entropy[1], label = f'Agreement in entropy (AUROC={auroc_entropy})')
+    plt.plot(roc_log_probs[0], roc_log_probs[1], label = f'Agreement in log probs (AUROC={auroc_roc_log_probs})')
+    plt.plot([0, 1], [0, 1],'r--')
+    plt.xlim([0, 1])
+    plt.ylim([0, 1])
+    plt.ylabel('True Positive Rate')
+    plt.xlabel('False Positive Rate')
+    plt.legend()
+    plt.show()
