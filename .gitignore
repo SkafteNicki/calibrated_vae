@@ -3,3 +3,4 @@ outputs/
 MNIST/
 __pycache__/
 checkpoints
+*.csv

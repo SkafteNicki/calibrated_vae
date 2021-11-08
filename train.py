@@ -33,8 +33,8 @@ def train(args):
         callbacks.append(pl.callbacks.GPUStatsMonitor())
 
     # Initialize logger
-    logger = pl.loggers.WandbLogger(project="calibrated_vae", log_model='all')
-    #logger.watch(model, log='all', log_freq=100, log_graph=True)
+    logger = pl.loggers.WandbLogger(project="calibrated_vae", log_model=True)
+    logger.watch(model, log='all', log_freq=100, log_graph=True)
 
     # Initialize trainer
     trainer = pl.Trainer.from_argparse_args(args, logger=logger, callbacks=callbacks)
@@ -42,6 +42,13 @@ def train(args):
     # Train and test!
     trainer.fit(model, datamodule=datamodule)
     trainer.test(model, datamodule=datamodule, ckpt_path='best')
+
+    # Also upload a copy of best and latest model
+    logger_dir = model.logger.experiment.dir+'\\checkpoints'
+    os.makedirs(logger_dir, exist_ok=True)
+    best_model_path = callbacks[0].best_model_path
+    copyfile(best_model_path, logger_dir+'\\best_model.ckpt')
+    trainer.save_checkpoint(logger_dir+'\\latest_model.ckpt')
 
 
 if __name__ == "__main__":
@@ -58,7 +65,7 @@ if __name__ == "__main__":
 
     # Model specific arguments
     parser.add_argument("--prob", type=float, default=0.05)
-    parser.add_argument("--mc_samples", type=int, default=10)
+    parser.add_argument("--mc_samples", type=int, default=50)
     parser.add_argument("--only_decoder_mc", type=bool, default=False)
 
     parser.add_argument("--n_ensemble", type=int, default=5)

@@ -93,10 +93,10 @@ class VAE(LightningModule):
         z = q_dist.rsample()
         x_hat = self(z)
         kl = D.kl_divergence(q_dist, self.prior).mean()
-        return z_mu, z_std, x_hat, kl
+        return z_mu, z_std, z, x_hat, kl
 
     def log_prob(self, x: Tensor) -> Tensor:
-        _, _, x_hat, _ = self.encode_decode()
+        _, _, _, x_hat, _ = self.encode_decode()
         dist = D.Independent(D.Bernoulli(probs=x_hat), 3)
         return dist.log_prob(x)
 
@@ -107,7 +107,7 @@ class VAE(LightningModule):
         with torch.no_grad():
             for batch in dataloader:
                 x, _ = batch
-                _, _, x_hat, _ = self.encode_decode(x)
+                _, _, _, x_hat, _ = self.encode_decode(x)
                 d = D.Independent(D.Bernoulli(probs=x_hat), 3)
                 log_probs.append(d.log_prob(x))
         log_probs = torch.cat(log_probs, dim=0)
@@ -115,7 +115,7 @@ class VAE(LightningModule):
         return log_probs
 
     def _step(self, x, state):
-        z_mu, z_std, x_hat, kl = self.encode_decode(x)
+        z_mu, z_std, z, x_hat, kl = self.encode_decode(x)
 
         recon = self.recon(x_hat, x).sum(dim=[1, 2, 3]).mean()
 
@@ -127,26 +127,25 @@ class VAE(LightningModule):
         self.log(f"{state}_loss", loss, prog_bar=True)
         self.log("kl_beta", beta)
 
-        return loss, z_mu, z_std, x_hat
+        return loss, z_mu, z_std, z, x_hat
 
     def training_step(self, batch, batch_idx=0):
         x, y = batch
-        loss, z_mu, _, x_hat = self._step(x, "train")
+        loss, z_mu, _, _, x_hat = self._step(x, "train")
         
         if batch_idx == 0:
-
             # plot reconstructions
             images = wandb.Image(
                 torch.cat([x[:8], x_hat[:8]], dim=0),
                 caption="Top: Original, Bottom: Reconstruction",
             )
-            self.logger.experiment.log({"recon_epoch": images}, commit=False)
+            self.logger.experiment.log({"recon": images})
 
             # plot samples
-            z_sample = torch.randn(8, self.hparams.latent_size, device=self.device)
+            z_sample = self.prior.sample((8,))
             x_sample = self(z_sample)
             images = wandb.Image(x_sample, caption="Samples")
-            self.logger.experiment.log({"samples_epoch": images}, commit=False)
+            self.logger.experiment.log({"samples": images})
 
         return {"loss": loss, "latents": z_mu.detach(), "labels": y.detach()}
 
@@ -172,7 +171,9 @@ class VAE(LightningModule):
     def training_epoch_end(self, outputs):
         self.training_epoch_end_plotter(outputs)
 
-    def training_epoch_end_plotter(self, outputs, mc_samples: int = 1):
+    def training_epoch_end_plotter(
+        self, outputs, mc_samples: int = 1, plot_bound: float = 7.0, n_points: int = 30,
+    ) -> None:
         latents = torch.cat([o["latents"] for o in outputs], dim=0)
         labels = torch.cat([o["labels"] for o in outputs], dim=0)
 
@@ -181,17 +182,17 @@ class VAE(LightningModule):
             plt.scatter(
                 latents[i == labels, 0].cpu(),
                 latents[i == labels, 1].cpu(),
-                label=str(i),
+                label=str(i.item()),
                 zorder=10,
                 alpha=0.5,
             )
-        plt.axis([-5, 5, -5, 5])
+        plt.axis([-plot_bound, plot_bound, -plot_bound, plot_bound])
         plt.legend()
         plt.grid(True)
 
         # plot latent variance
-        n_points = 20
-        meshgrid = torch.meshgrid([torch.linspace(-5, 5, n_points) for _ in range(2)])
+        linspaces = [torch.linspace(-plot_bound, plot_bound, n_points) for _ in range(2)]
+        meshgrid = torch.meshgrid(linspaces)
         z_sample = torch.stack(meshgrid).reshape(2, -1).T
 
         samples = []
@@ -212,7 +213,7 @@ class VAE(LightningModule):
             zorder=0,
         )
         plt.colorbar()
-        self.logger.experiment.log({"latent_entropy": wandb.Image(plt)}, commit=False)
+        self.logger.experiment.log({"latent_entropy": wandb.Image(plt)})
         plt.clf()
 
         plt.contourf(
@@ -223,5 +224,5 @@ class VAE(LightningModule):
             zorder=0,
         )
         plt.colorbar()
-        self.logger.experiment.log({"latent_entropy_std": wandb.Image(plt)}, commit=False)
+        self.logger.experiment.log({"latent_entropy_std": wandb.Image(plt)})
         plt.clf()
