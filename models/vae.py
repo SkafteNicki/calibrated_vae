@@ -107,9 +107,9 @@ class VAE(LightningModule):
         with torch.no_grad():
             for batch in dataloader:
                 x, _ = batch
-                _, _, _, x_hat, _ = self.encode_decode(x)
+                _, _, _, x_hat, _ = self.encode_decode(x.to(self.device))
                 d = D.Independent(D.Bernoulli(probs=x_hat), 3)
-                log_probs.append(d.log_prob(x))
+                log_probs.append(d.log_prob(x.to(self.device)))
         log_probs = torch.cat(log_probs, dim=0)
         self.training = current_state
         return log_probs
