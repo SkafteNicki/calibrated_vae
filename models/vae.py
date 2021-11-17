@@ -9,43 +9,52 @@ from torch import nn
 from torch.utils.data.dataloader import DataLoader
 
 import wandb
-from models.layers import AdditiveRegularizer, Reshape
+from models.layers import AdditiveRegularizer, Reshape, get_activation_layer
 
 
 class VAE(LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
         self.save_hyperparameters()
-
+        hidden_size = 512 if self.hparams.n_channels==1 else 1152
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 32, 3, stride=2),
-            nn.LeakyReLU(),
+            nn.Conv2d(self.hparams.n_channels, 32, 3, stride=2),
+            get_activation_layer(self.hparams.activation_fn),
             nn.Conv2d(32, 64, 3, stride=2),
-            nn.LeakyReLU(),
+            get_activation_layer(self.hparams.activation_fn),
             nn.Conv2d(64, 128, 3, stride=2),
-            nn.LeakyReLU(),
+            get_activation_layer(self.hparams.activation_fn),
             nn.Flatten(),
         )
-        self.encoder_mu = nn.Linear(512, self.hparams.latent_size)
+        self.encoder_mu = nn.Linear(hidden_size, self.hparams.latent_size)
         self.encoder_std = nn.Sequential(
-            nn.Linear(512, self.hparams.latent_size),
+            nn.Linear(hidden_size, self.hparams.latent_size),
             nn.Softplus(),
             AdditiveRegularizer(),
         )
 
+        final_decoder = [
+            nn.ConvTranspose2d(8, 8, 3),
+            get_activation_layer(self.hparams.activation_fn),
+            nn.Conv2d(8, self.hparams.n_channels, 2)
+        ] if self.hparams.n_channels==3 else [
+            nn.Conv2d(8, self.hparams.n_channels, 4),
+        ]
+        # TODO: use pl_bolts resnet18_encoder/decoder for cifar10
+
         self.decoder = nn.Sequential(
             nn.Linear(self.hparams.latent_size, 128),
-            nn.LeakyReLU(),
+            get_activation_layer(self.hparams.activation_fn),
             Reshape(128, 1, 1),
             nn.ConvTranspose2d(128, 64, 3, stride=2),
-            nn.LeakyReLU(),
+            get_activation_layer(self.hparams.activation_fn),
             nn.ConvTranspose2d(64, 32, 3, stride=2),
-            nn.LeakyReLU(),
+            get_activation_layer(self.hparams.activation_fn),
             nn.ConvTranspose2d(32, 16, 3, stride=2),
-            nn.LeakyReLU(),
+            get_activation_layer(self.hparams.activation_fn),
             nn.ConvTranspose2d(16, 8, 3, stride=2),
-            nn.LeakyReLU(),
-            nn.Conv2d(8, 1, 4),
+            get_activation_layer(self.hparams.activation_fn),
+            *final_decoder,
             nn.Sigmoid(),
         )
 

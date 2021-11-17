@@ -3,10 +3,11 @@ import csv
 import numpy as np
 import torch
 from pytorch_lightning import LightningDataModule
+from pl_bolts.datamodules.vision_datamodule import VisionDataModule
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, TensorDataset, random_split
 from torchvision import transforms
-from torchvision.datasets import MNIST
+from torchvision.datasets import MNIST, SVHN
 
 
 class MoonsDatamodule(LightningDataModule):
@@ -105,6 +106,12 @@ class Mnist01Datamodule(MnistDatamodule):
 class Mnist23DataModule(MnistDatamodule):
     def __init__(self, name: str = "mnist", data_dir: str = "", batch_size: int = 64, **kwargs):
         super().__init__(name=name, data_dir=data_dir, labels_to_use=[2, 3], batch_size=batch_size)
+
+class SVHN(VisionDataModule):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.dataset_cls = SVHN
+
 
 if __name__ == "__main__":
     datamodule = MnistDatamodule(labels_to_use=[0, 1])

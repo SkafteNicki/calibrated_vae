@@ -1,6 +1,8 @@
 wandb/
 outputs/
 MNIST/
+FashionMNIST/
 __pycache__/
 checkpoints
 *.csv
+data\

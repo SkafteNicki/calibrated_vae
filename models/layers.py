@@ -1,3 +1,5 @@
+from typing import Any
+
 import torch
 from torch import Tensor
 from torch import distributions as D
@@ -15,7 +17,7 @@ class AdditiveRegularizer(nn.Module):
 
 
 class Reshape(nn.Module):
-    def __init__(self, *dims):
+    def __init__(self, *dims: Any):
         super().__init__()
         self.dims = dims
 
@@ -28,7 +30,7 @@ class MCDropout(nn.Dropout):
         super().__init__(p, inplace)
         self.training = True
 
-    def train(self, mode):
+    def train(self, mode: bool) -> nn.Module:
         # disable switching into eval mode
         return self
 
@@ -38,14 +40,13 @@ class MCDropout2d(nn.Dropout2d):
         super().__init__(p, inplace)
         self.training = True
 
-    def train(self, mode):
+    def train(self, mode: bool) -> nn.Module:
         # disable switching into eval mode
         return self
 
 
 class EnsembleList(nn.ModuleList):
     def forward(self, x: Tensor) -> Tensor:
-        # If input as
         if x.shape[0] == len(self):
             return torch.stack([m(xx) for xx, m in zip(x, self)])
         else:
@@ -53,7 +54,7 @@ class EnsembleList(nn.ModuleList):
 
 
 class NormalSigmoidResample(nn.Module):
-    def __init__(self, mean_module, std_module):
+    def __init__(self, mean_module: nn.Module, std_module: nn.Module):
         super().__init__()
         self.mean_module = mean_module
         self.std_module = std_module
@@ -67,7 +68,16 @@ class NormalSigmoidResample(nn.Module):
         return torch.sigmoid(d.rsample())
 
 
-def weight_reset(m):
+def weight_reset(m: nn.Module):
     reset_parameters = getattr(m, "reset_parameters", None)
     if callable(reset_parameters):
         m.reset_parameters()
+
+
+def get_activation_layer(name: str, *args: Any):
+    act = {
+        'relu': nn.ReLU,
+        'leakyrelu': nn.LeakyReLU,
+        'silu': nn.SiLU
+    }
+    return act[name](*args)

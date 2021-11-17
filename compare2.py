@@ -17,12 +17,14 @@ if __name__ == "__main__":
     vae.to(device)
     
     mevae_class = get_model("mevae")
-    mevae = mevae_class.load_from_checkpoint("wandb/run-20211102_151231-2htnoygr/files/checkpoints/best_model.ckpt")
+    mevae = mevae_class.load_from_checkpoint("wandb/run-20211105_111253-10lb8792/files\checkpoints/best_model.ckpt")
     mevae.to(device)
 
-    mnist01 = get_data("mnist01")()
+    mnist01 = get_data("mnist")()
+    mnist01.prepare_data()
     mnist01.setup()
-    mnist23 = get_data("mnist23")()
+    mnist23 = get_data("fmnist")()
+    mnist23.prepare_data()
     mnist23.setup()
 
     base_log_probs_mnist01 = vae.calc_log_prob(mnist01.test_dataloader()).cpu()
@@ -90,7 +92,7 @@ if __name__ == "__main__":
 
     plt.figure()
     plt.title('Receiver Operating Characteristic')
-    #plt.plot(roc_base[0], roc_base[1], label = f'Base log probs (AUROC={auroc_base})')
+    plt.plot(roc_base[0], roc_base[1], label = f'Base log probs (AUROC={auroc_base})')
     plt.plot(roc_entropy[0], roc_entropy[1], label = f'Agreement in entropy (AUROC={auroc_entropy})')
     plt.plot(roc_log_probs[0], roc_log_probs[1], label = f'Agreement in log probs (AUROC={auroc_roc_log_probs})')
     plt.plot([0, 1], [0, 1],'r--')
@@ -138,17 +140,19 @@ if __name__ == "__main__":
     #        ax[i, j].imshow(x_hat_out[j, i, 0], cmap='gray')
     #        ax[i, j].axis('off')
 
-    fig, ax = plt.subplots(nrows=10, ncols=10)
-    for i in range(10):
+    
+    n = mevae.hparams.n_ensemble
+    fig, ax = plt.subplots(nrows=n, ncols=n)
+    for i in range(n):
         decoded = mevae(z_mu_in[i, 0, :].unsqueeze(0).to(device), use_all=True).detach().cpu()
-        for j in range(10):
+        for j in range(n):
             ax[i, j].imshow(decoded[j, 0, 0], cmap='gray')
             ax[i, j].axis('off')
 
-    fig, ax = plt.subplots(nrows=10, ncols=10)
-    for i in range(10):
+    fig, ax = plt.subplots(nrows=n, ncols=n)
+    for i in range(n):
         decoded = mevae(z_mu_out[i, 1, :].unsqueeze(0).to(device), use_all=True).detach().cpu()
-        for j in range(10):
+        for j in range(n):
             ax[i, j].imshow(decoded[j, 0, 0], cmap='gray')
             ax[i, j].axis('off')
 
