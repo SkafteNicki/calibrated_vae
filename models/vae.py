@@ -183,55 +183,56 @@ class VAE(LightningModule):
     def training_epoch_end_plotter(
         self, outputs, mc_samples: int = 1, plot_bound: float = 7.0, n_points: int = 30,
     ) -> None:
-        latents = torch.cat([o["latents"] for o in outputs], dim=0)
-        labels = torch.cat([o["labels"] for o in outputs], dim=0)
+        with torch.no_grad():
+            latents = torch.cat([o["latents"] for o in outputs], dim=0)
+            labels = torch.cat([o["labels"] for o in outputs], dim=0)
 
-        # plot latent encodings
-        for i in labels.unique():
-            plt.scatter(
-                latents[i == labels, 0].cpu(),
-                latents[i == labels, 1].cpu(),
-                label=str(i.item()),
-                zorder=10,
-                alpha=0.5,
+            # plot latent encodings
+            for i in labels.unique():
+                plt.scatter(
+                    latents[i == labels, 0].cpu(),
+                    latents[i == labels, 1].cpu(),
+                    label=str(i.item()),
+                    zorder=10,
+                    alpha=0.5,
+                )
+            plt.axis([-plot_bound, plot_bound, -plot_bound, plot_bound])
+            plt.legend()
+            plt.grid(True)
+
+            # plot latent variance
+            linspaces = [torch.linspace(-plot_bound, plot_bound, n_points) for _ in range(2)]
+            meshgrid = torch.meshgrid(linspaces)
+            z_sample = torch.stack(meshgrid).reshape(2, -1).T
+
+            samples = []
+            for _ in range(mc_samples):
+                x_out = self(z_sample.to(self.device))
+                x_var = D.Bernoulli(probs=x_out).entropy().sum(dim=[1, 2, 3])
+                samples.append(x_var)
+
+            x_var = torch.stack(samples).mean(dim=0)
+            x_var_std = torch.stack(samples).std(dim=0)
+            x_var_std[torch.isnan(x_var_std)] = 0.0
+
+            plt.contourf(
+                z_sample[:, 0].reshape(n_points, n_points),
+                z_sample[:, 1].reshape(n_points, n_points),
+                x_var.reshape(n_points, n_points).detach().cpu(),
+                levels=50,
+                zorder=0,
             )
-        plt.axis([-plot_bound, plot_bound, -plot_bound, plot_bound])
-        plt.legend()
-        plt.grid(True)
+            plt.colorbar()
+            self.logger.experiment.log({"latent_entropy": wandb.Image(plt)})
+            plt.clf()
 
-        # plot latent variance
-        linspaces = [torch.linspace(-plot_bound, plot_bound, n_points) for _ in range(2)]
-        meshgrid = torch.meshgrid(linspaces)
-        z_sample = torch.stack(meshgrid).reshape(2, -1).T
-
-        samples = []
-        for _ in range(mc_samples):
-            x_out = self(z_sample.to(self.device))
-            x_var = D.Bernoulli(probs=x_out).entropy().sum(dim=[1, 2, 3])
-            samples.append(x_var)
-
-        x_var = torch.stack(samples).mean(dim=0)
-        x_var_std = torch.stack(samples).std(dim=0)
-        x_var_std[torch.isnan(x_var_std)] = 0.0
-
-        plt.contourf(
-            z_sample[:, 0].reshape(n_points, n_points),
-            z_sample[:, 1].reshape(n_points, n_points),
-            x_var.reshape(n_points, n_points).detach().cpu(),
-            levels=50,
-            zorder=0,
-        )
-        plt.colorbar()
-        self.logger.experiment.log({"latent_entropy": wandb.Image(plt)})
-        plt.clf()
-
-        plt.contourf(
-            z_sample[:, 0].reshape(n_points, n_points),
-            z_sample[:, 1].reshape(n_points, n_points),
-            x_var_std.reshape(n_points, n_points).detach().cpu(),
-            levels=50,
-            zorder=0,
-        )
-        plt.colorbar()
-        self.logger.experiment.log({"latent_entropy_std": wandb.Image(plt)})
-        plt.clf()
+            plt.contourf(
+                z_sample[:, 0].reshape(n_points, n_points),
+                z_sample[:, 1].reshape(n_points, n_points),
+                x_var_std.reshape(n_points, n_points).detach().cpu(),
+                levels=50,
+                zorder=0,
+            )
+            plt.colorbar()
+            self.logger.experiment.log({"latent_entropy_std": wandb.Image(plt)})
+            plt.clf()

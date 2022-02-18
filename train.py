@@ -37,7 +37,9 @@ def train(args: Namespace) -> None:
     logger.watch(model, log='all', log_freq=100, log_graph=True)
 
     # Initialize trainer
-    trainer = pl.Trainer.from_argparse_args(args, logger=logger, callbacks=callbacks)
+    trainer = pl.Trainer.from_argparse_args(
+        args, logger=logger, callbacks=callbacks, num_sanity_val_steps=0
+    )
 
     # Train and test!
     trainer.fit(model, datamodule=datamodule)
@@ -70,6 +72,7 @@ if __name__ == "__main__":
     parser.add_argument("--mc_samples", type=int, default=50)
     parser.add_argument("--only_decoder_mc", type=bool, default=False)
     parser.add_argument("--n_ensemble", type=int, default=5)
+    parser.add_argument("--evolve_strategy", type=int, default=0)
 
     parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
