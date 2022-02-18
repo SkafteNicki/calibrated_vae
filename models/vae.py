@@ -6,56 +6,56 @@ from pytorch_lightning import LightningModule
 from torch import Tensor
 from torch import distributions as D
 from torch import nn
+from torch.nn.modules.activation import Sigmoid
 from torch.utils.data.dataloader import DataLoader
 
 import wandb
-from models.layers import AdditiveRegularizer, Reshape, get_activation_layer
+from models.layers import AdditiveRegularizer, Reshape
+from pl_bolts.models.autoencoders.components import resnet18_encoder, resnet18_decoder
 
 
 class VAE(LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
         self.save_hyperparameters()
-        hidden_size = 512 if self.hparams.n_channels==1 else 1152
-        self.encoder = nn.Sequential(
-            nn.Conv2d(self.hparams.n_channels, 32, 3, stride=2),
-            get_activation_layer(self.hparams.activation_fn),
-            nn.Conv2d(32, 64, 3, stride=2),
-            get_activation_layer(self.hparams.activation_fn),
-            nn.Conv2d(64, 128, 3, stride=2),
-            get_activation_layer(self.hparams.activation_fn),
-            nn.Flatten(),
-        )
-        self.encoder_mu = nn.Linear(hidden_size, self.hparams.latent_size)
+        
+        if self.hparams.n_channels==1:
+            self.encoder = nn.Sequential(
+                nn.Conv2d(1, 32, 3, stride=2),
+                nn.LeakyReLU(),
+                nn.Conv2d(32, 64, 3, stride=2),
+                nn.LeakyReLU(),
+                nn.Conv2d(64, 128, 3, stride=2),
+                nn.LeakyReLU(),
+                nn.Flatten(),
+            )
+            self.decoder = nn.Sequential(
+                nn.Linear(self.hparams.latent_size, 128),
+                nn.LeakyReLU(),
+                Reshape(128, 1, 1),
+                nn.ConvTranspose2d(128, 64, 3, stride=2),
+                nn.LeakyReLU(),
+                nn.ConvTranspose2d(64, 32, 3, stride=2),
+                nn.LeakyReLU(),
+                nn.ConvTranspose2d(32, 16, 3, stride=2),
+                nn.LeakyReLU(),
+                nn.ConvTranspose2d(16, 8, 3, stride=2),
+                nn.LeakyReLU(),
+                nn.Conv2d(8, 1, 4),
+                nn.Sigmoid(),
+            )
+        else:
+            self.encoder = resnet18_encoder(False, False)
+            self.decoder = nn.Sequential(
+                resnet18_decoder(self.hparams.latent_size, 32, False, False),
+                nn.Sigmoid(),
+            )
+
+        self.encoder_mu = nn.Linear(512, self.hparams.latent_size)
         self.encoder_std = nn.Sequential(
-            nn.Linear(hidden_size, self.hparams.latent_size),
+            nn.Linear(512, self.hparams.latent_size),
             nn.Softplus(),
             AdditiveRegularizer(),
-        )
-
-        final_decoder = [
-            nn.ConvTranspose2d(8, 8, 3),
-            get_activation_layer(self.hparams.activation_fn),
-            nn.Conv2d(8, self.hparams.n_channels, 2)
-        ] if self.hparams.n_channels==3 else [
-            nn.Conv2d(8, self.hparams.n_channels, 4),
-        ]
-        # TODO: use pl_bolts resnet18_encoder/decoder for cifar10
-
-        self.decoder = nn.Sequential(
-            nn.Linear(self.hparams.latent_size, 128),
-            get_activation_layer(self.hparams.activation_fn),
-            Reshape(128, 1, 1),
-            nn.ConvTranspose2d(128, 64, 3, stride=2),
-            get_activation_layer(self.hparams.activation_fn),
-            nn.ConvTranspose2d(64, 32, 3, stride=2),
-            get_activation_layer(self.hparams.activation_fn),
-            nn.ConvTranspose2d(32, 16, 3, stride=2),
-            get_activation_layer(self.hparams.activation_fn),
-            nn.ConvTranspose2d(16, 8, 3, stride=2),
-            get_activation_layer(self.hparams.activation_fn),
-            *final_decoder,
-            nn.Sigmoid(),
         )
 
         # warmup scaling of kl term
