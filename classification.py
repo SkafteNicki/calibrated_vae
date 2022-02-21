@@ -199,6 +199,10 @@ if __name__ == "__main__":
                     continue
                 end = time.time()
 
+                os.makedirs('trained_classification_models/', exist_ok=True)
+                with open(f'trained_classification_models/{dataset_name}_{model_name}_{n_ensemble}.pkl', 'wb') as file:
+                    pkl.dump(model, file)
+
                 acc, nll, brier = model_class.ensample_predict(model, test_dataloader)
 
                 with open("classification_scores.txt", "a") as file:
@@ -206,6 +210,4 @@ if __name__ == "__main__":
                         f"{dataset_name}, {model_name}, {n_ensemble}, {end-start}, {acc}, {nll}, {brier} \n"
                     )
 
-                os.makedirs('trained_classification_models/', exist_ok=True)
-                with open(f'trained_classification_models/{dataset_name}_{model_name}_{n_ensemble}.pkl', 'wb') as file:
-                    pkl.dump(model, file)
+                
