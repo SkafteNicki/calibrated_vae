@@ -111,7 +111,7 @@ class DeepEnsembles(LightningModule):
             )
             trainer.fit(model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader)
             model.eval()
-            models.append(model)
+            models.append(deepcopy(model))
         return models
 
     @classmethod
