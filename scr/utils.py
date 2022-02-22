@@ -1,4 +1,5 @@
 import functools
+
 import torch
 import torch.distributions as D
 
@@ -12,7 +13,7 @@ def ll(x, mean, var):
     return -d.log_prob(x).mean().item()
 
 
-def brier(probs, targets):
+def brierscore(probs, targets):
     n_class = probs.shape[1]
     return (probs - torch.nn.functional.one_hot(targets, n_class)).pow(2.0).sum(dim=-1).mean()
 

@@ -1,203 +1,104 @@
 import os
 import pickle as pkl
 import time
-from copy import deepcopy
 
-import numpy as np
+
+
 import torch
 import torchvision
-from pytorch_lightning import LightningModule, Trainer, callbacks
-from torch import nn
-from torchmetrics import Accuracy
-from torchmetrics.functional import accuracy
-
-from scr.layers import EnsampleLayer
-from scr.utils import brier, rgetattr, rsetattr
-
-base_resnet = torchvision.models.resnet18(pretrained=False)
 
 
-def create_mixensamble(module, n_ensemble, level="block"):
-    if level == "block":
-        attr_list = [
-            "layer1.0",
-            "layer1.1",
-            "layer2.0",
-            "layer2.1",
-            "layer3.0",
-            "layer3.1",
-            "layer4.0",
-            "layer4.1",
-        ]
-    elif level == "layer":
-        attr_list = ["layer1", "layer2", "layer3", "layer4"]
-    else:
-        raise ValueError()
-
-    base = getattr(module, "base")
-    for attr in attr_list:
-        rsetattr(base, attr, EnsampleLayer(rgetattr(base, attr), n_ensemble))
 
 
-class DeepEnsembles(LightningModule):
-    def __init__(self):
-        super().__init__()
-        self.base = base_resnet
-        self.base.fc = nn.Linear(512, 10)
-        self.loss_fn = nn.CrossEntropyLoss()
-
-        self.val_acc = Accuracy(num_classes=10)
-
-    def forward(self, x):
-        return self.base(x)
-
-    def training_step(self, batch, batch_idx):
-        x, y = batch
-        preds = self(x)
-        loss = self.loss_fn(preds, y)
-        acc = accuracy(preds, y, num_classes=10)
-        self.log("acc", acc, prog_bar=True)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        x, y = batch
-        preds = self(x)
-        self.val_acc.update(preds, y)
-        self.log("val_acc", self.val_acc, on_epoch=True, prog_bar=True)
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=1e-2)
-
-    @staticmethod
-    def get_predictions(model, x):
-        return torch.stack([m(x) for m in model]).mean(dim=0)
-
-    @classmethod
-    def fit(cls, n_ensemble, train_dataloader, val_dataloader=None):
-        models = []
-        for _ in range(n_ensemble):
-            model = cls()
-            trainer = Trainer(
-                logger=False,
-                accelerator="auto",
-                devices=1,
-                callbacks=[
-                    callbacks.EarlyStopping(monitor="val_acc", mode="max", patience=5)
-                ],
-            )
-            trainer.fit(
-                model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
-            )
-            model.eval()
-            models.append(deepcopy(model))
-        return models
-
-    @classmethod
-    def ensample_predict(cls, model, test_dataloader):
-        with torch.no_grad():
-            acc, nll, brier = 0.0, 0.0, 0.0
-            for batch in test_dataloader:
-                x, y = batch
-                pred = cls.get_predictions(model, x)
-                acc += accuracy(pred, y, num_classes=10).item()
-                nll += torch.nn.functional.nll_loss(pred, y).item()
-                brier += brier(pred, y).item()
-            acc = acc / len(test_dataloader)
-            nll = nll / len(test_dataloader)
-            brier = brier / len(test_dataloader)
-            return acc, nll, brier
 
 
-class MixLayerEnsembles(DeepEnsembles):
-    level = "layer"
-
-    def __init__(self, n_ensemble):
-        super().__init__()
-        create_mixensamble(self, n_ensemble, level=self.level)
-
-    @staticmethod
-    def get_predictions(model, x):
-        return torch.stack([model(x) for _ in range(100)]).mean(dim=0)
-
-    @classmethod
-    def fit(cls, n_ensemble, train_dataloader, val_dataloader=None):
-        model = cls(n_ensemble)
-        trainer = Trainer(
-            logger=False,
-            accelerator="auto",
-            devices=1,
-            callbacks=[
-                callbacks.EarlyStopping(monitor="val_acc", mode="max", patience=5)
-            ],
-        )
-        trainer.fit(
-            model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
-        )
-        model.eval()
-        return model
 
 
-class MixBlockEnsembles(DeepEnsembles):
-    level = "block"
+
+
 
 
 if __name__ == "__main__":
     os.makedirs("results/", exist_ok=True)
     with open("results/classification_scores.txt", "w") as file:
-        file.write("dataset, model_class, n_ensemble, train_time, acc, nll, brier \n")
+        file.write("dataset, model_class, n_ensemble, train_time, inference_time, acc, nll, brier \n")
 
-    for dataset_name in ["svhn", "cifar10"]:
+    for dataset_name in ["cifar10"]:#, "svhn"]:
         if dataset_name == "svhn":
-            dataset_class = torchvision.datasets.SVHN
+            train = torchvision.datasets.SVHN(
+                root=f"data/{dataset_name}/",
+                download=True,
+                split="train",
+                transform=torchvision.transforms.ToTensor(),
+            )    
+            test = torchvision.datasets.SVHN(
+                root=f"data/{dataset_name}/",
+                download=True,
+                split="test",
+                transform=torchvision.transforms.ToTensor(),
+            )
         elif dataset_name == "cifar10":
-            dataset_class = torchvision.datasets.CIFAR10
-        dataset = dataset_class(
-            root=f"data/{dataset_name}/",
-            download=True,
-            split="train",
-            transform=torchvision.transforms.ToTensor(),
+            train = torchvision.datasets.CIFAR10(
+                root=f"data/{dataset_name}/",
+                download=True,
+                train=True,
+                transform=torchvision.transforms.ToTensor(),
+            )
+            test = torchvision.datasets.CIFAR10(
+                root=f"data/{dataset_name}/",
+                download=True,
+                train=False,
+                transform=torchvision.transforms.ToTensor(),
+            )
+        n_train = int(len(train) * 0.9)
+        train, val = torch.utils.data.random_split(
+            train, [n_train, len(train)-n_train]
         )
-
-        n = len(dataset)
-        n_train = int(n * 0.9)
-        n_val = int(n * 0.05)
-        n_test = n - n_train - n_val
-        train, val, test = torch.utils.data.random_split(
-            dataset, [n_train, n_val, n_test]
-        )
+        
         train_dataloader = torch.utils.data.DataLoader(train, batch_size=128)
         val_dataloader = torch.utils.data.DataLoader(val, batch_size=128)
         test_dataloader = torch.utils.data.DataLoader(test, batch_size=128)
 
-        for model_class in [DeepEnsembles, MixLayerEnsembles, MixBlockEnsembles]:
+        for model_class in [MixLayerEnsembles]:#[DeepEnsembles, MixLayerEnsembles, MixBlockEnsembles]:
             model_name = model_class.__name__
-            for n_ensemble in [1, 2, 3, 4, 5, 8, 10, 12, 15, 20, 25]:
+            for n_ensemble in [1, 2]:#3, 4, 5, 8, 10, 12, 15, 20, 25]:
                 print(
                     "======================================================== \n"
                     f"Model={model_name}, n_ensemble={n_ensemble}   \n"
                     "======================================================== \n"
                 )
-
-                start = time.time()
+                
                 try:
+                    train_start = time.time()
                     model = model_class.fit(
                         n_ensemble, train_dataloader, val_dataloader
                     )
+                    train_end = time.time()
+
+                    os.makedirs("models/classification_models/", exist_ok=True)
+                    with open(
+                        f"models/classification_models/{dataset_name}_{model_name}_{n_ensemble}.pkl",
+                        "wb",
+                    ) as file:
+                        pkl.dump(model, file)
+
+                    inference_start = time.time()
+                    acc, nll, brier = model_class.ensample_predict(model, test_dataloader)
+                    inference_end = time.time()
+
+
+                    train_time = train_end - train_start
+                    inference_time = inference_end - inference_start
+                    with open("results/classification_scores.txt", "a") as file:
+                        file.write(
+                            f"{dataset_name}, {model_name}, {n_ensemble}, {train_time}, {inference_time}, {acc}, {nll}, {brier} \n"
+                        )
+
                 except Exception as e:
                     print(f"Exception happened: {e}")
                     continue
-                end = time.time()
+                
 
-                os.makedirs("models/classification_models/", exist_ok=True)
-                with open(
-                    f"models/classification_models/{dataset_name}_{model_name}_{n_ensemble}.pkl",
-                    "wb",
-                ) as file:
-                    pkl.dump(model, file)
 
-                acc, nll, brier = model_class.ensample_predict(model, test_dataloader)
 
-                with open("results/classification_scores.txt", "a") as file:
-                    file.write(
-                        f"{dataset_name}, {model_name}, {n_ensemble}, {end-start}, {acc}, {nll}, {brier} \n"
-                    )
+                
