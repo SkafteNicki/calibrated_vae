@@ -1,14 +1,14 @@
 from argparse import ArgumentParser
+from copy import deepcopy
 from itertools import chain
 
+import matplotlib.pyplot as plt
+import pandas as pd
 import seaborn as sns
 import torch
-from pytorch_lightning import Trainer, LightningModule
+from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.loggers.base import DummyLogger
 from torch import distributions as D
-import pandas as pd
-import matplotlib.pyplot as plt
-from copy import deepcopy
 from tqdm import tqdm
 
 from models import get_model

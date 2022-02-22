@@ -1,12 +1,13 @@
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
 import torch
 from torch import distributions as D
 from tqdm import tqdm
+
 from models import get_model
 from scr.old_scr import get_data
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-import numpy as np
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -80,7 +81,7 @@ if __name__ == "__main__":
 #    print(f"best threshold for entropy {thredshols[np.argmax(acc1)]} with acc {np.max(acc1)}")
 #    print(f"best threshold for entropy {thredshols[np.argmax(acc2)]} with acc {np.max(acc2)}")
 
-    from sklearn.metrics import roc_auc_score, roc_curve, RocCurveDisplay
+    from sklearn.metrics import RocCurveDisplay, roc_auc_score, roc_curve
     roc_base = roc_curve(dataframe['dataset_class'].to_numpy(), -dataframe['base_log_probs'].to_numpy())
     roc_entropy = roc_curve(dataframe['dataset_class'].to_numpy(), dataframe['entropy'].to_numpy())
     roc_log_probs = roc_curve(dataframe['dataset_class'].to_numpy(), dataframe['log_probs'].to_numpy())

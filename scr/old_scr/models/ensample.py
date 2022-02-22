@@ -2,12 +2,11 @@ from copy import deepcopy
 
 import matplotlib.pyplot as plt
 import torch
-from torch import distributions as D
-from torch import nn
-
 import wandb
 from models.layers import EnsembleList, weight_reset
 from models.vae import VAE
+from torch import distributions as D
+from torch import nn
 
 
 class EVAE(VAE):

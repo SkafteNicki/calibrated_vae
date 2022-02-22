@@ -1,12 +1,11 @@
 import matplotlib.pyplot as plt
 import torch
-from torch import Tensor
-from torch import distributions as D
-from torch import nn
-
 import wandb
 from models.layers import AdditiveRegularizer, MCDropout, MCDropout2d, Reshape
 from models.vae import VAE
+from torch import Tensor
+from torch import distributions as D
+from torch import nn
 
 
 class MCVAE(VAE):

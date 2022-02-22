@@ -3,14 +3,13 @@ from itertools import chain
 
 import matplotlib.pyplot as plt
 import torch
+import wandb
+from models.ensample import EVAE
+from models.layers import EnsembleList, weight_reset
 from pytorch_lightning.callbacks import EarlyStopping
 from torch import Tensor
 from torch import distributions as D
 from torch import nn
-
-import wandb
-from models.ensample import EVAE
-from models.layers import EnsembleList, weight_reset
 
 
 class DEVAE(EVAE):

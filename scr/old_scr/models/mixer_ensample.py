@@ -3,15 +3,14 @@ from itertools import chain
 
 import matplotlib.pyplot as plt
 import torch
+import wandb
+from models.layers import EnsembleList, weight_reset
+from models.vae import VAE
 from pytorch_lightning.callbacks import EarlyStopping
 from torch import Tensor
 from torch import distributions as D
 from torch import nn
 from torch.utils.data import DataLoader
-
-import wandb
-from models.layers import EnsembleList, weight_reset
-from models.vae import VAE
 
 
 class MEVAE(VAE):

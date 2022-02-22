@@ -2,8 +2,8 @@ import csv
 
 import numpy as np
 import torch
-from pytorch_lightning import LightningDataModule
 from pl_bolts.datamodules.vision_datamodule import VisionDataModule
+from pytorch_lightning import LightningDataModule
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, TensorDataset, random_split
 from torchvision import transforms

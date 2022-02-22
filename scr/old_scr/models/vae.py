@@ -2,16 +2,16 @@ from typing import Tuple
 
 import matplotlib.pyplot as plt
 import torch
+import wandb
+from models.layers import AdditiveRegularizer, Reshape
+from pl_bolts.models.autoencoders.components import (resnet18_decoder,
+                                                     resnet18_encoder)
 from pytorch_lightning import LightningModule
 from torch import Tensor
 from torch import distributions as D
 from torch import nn
 from torch.nn.modules.activation import Sigmoid
 from torch.utils.data.dataloader import DataLoader
-
-import wandb
-from models.layers import AdditiveRegularizer, Reshape
-from pl_bolts.models.autoencoders.components import resnet18_encoder, resnet18_decoder
 
 
 class VAE(LightningModule):

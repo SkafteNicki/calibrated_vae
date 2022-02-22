@@ -1,6 +1,6 @@
+import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
-import matplotlib.pyplot as plt
 
 if __name__ == '__main__':
     vae_mnist01 = pd.read_csv('vae_mnist01.csv')

@@ -1,5 +1,6 @@
 from torch import nn
 
+
 def _conv(channel_size, kernel_num):
     return nn.Sequential(
         nn.Conv2d(
@@ -57,6 +58,7 @@ decoder = nn.Sequential(
 )
 
 import torch
+
 h = project(torch.randn(10, 2))
 h = h.view(-1, kernel_num, feature_size, feature_size)
 o = decoder(h)

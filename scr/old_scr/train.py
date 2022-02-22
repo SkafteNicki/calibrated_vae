@@ -4,8 +4,8 @@ from shutil import copyfile
 
 import pytorch_lightning as pl
 
-from scr.old_scr import get_data
 from models import get_model
+from scr.old_scr import get_data
 
 
 def train(args: Namespace) -> None:

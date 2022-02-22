@@ -1,13 +1,14 @@
-import torch
-from torch import distributions as D
-from tqdm import tqdm
-from models import get_model
-from scr.old_scr import get_data
-import pandas as pd
-import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.stats import shapiro, probplot, normaltest
+import pandas as pd
+import seaborn as sns
+import torch
+from scipy.stats import normaltest, probplot, shapiro
+from torch import distributions as D
+from tqdm import tqdm
+
+from models import get_model
+from scr.old_scr import get_data
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 

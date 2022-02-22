@@ -1,7 +1,9 @@
 import os
-from models import get_model
-import torch
+
 import matplotlib.pyplot as plt
+import torch
+
+from models import get_model
 
 if __name__ == "__main__":
 #    for seed in range(5):
