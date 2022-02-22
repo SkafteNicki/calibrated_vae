@@ -57,7 +57,6 @@ class DeepEnsembles(LightningModule):
                 callbacks=[
                     callbacks.EarlyStopping(monitor="val_acc", mode="max", patience=5)
                 ],
-                max_epochs=1,
             )
             trainer.fit(
                 model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
@@ -103,7 +102,6 @@ class MixLayerEnsembles(DeepEnsembles):
             callbacks=[
                 callbacks.EarlyStopping(monitor="val_acc", mode="max", patience=5)
             ],
-            max_epochs=1,
         )
         trainer.fit(
             model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
