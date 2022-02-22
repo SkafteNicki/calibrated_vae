@@ -1,8 +1,7 @@
-import functools
-import time
-from copy import deepcopy
 import os
 import pickle as pkl
+import time
+from copy import deepcopy
 
 import numpy as np
 import torch
@@ -12,35 +11,10 @@ from torch import nn
 from torchmetrics import Accuracy
 from torchmetrics.functional import accuracy
 
+from scr.layers import EnsampleLayer
+from scr.utils import brier, rgetattr, rsetattr
+
 base_resnet = torchvision.models.resnet18(pretrained=False)
-
-
-def rsetattr(obj, attr, val):
-    pre, _, post = attr.rpartition(".")
-    return setattr(rgetattr(obj, pre) if pre else obj, post, val)
-
-
-def rgetattr(obj, attr, *args):
-    def _getattr(obj, attr):
-        return getattr(obj, attr, *args)
-
-    return functools.reduce(_getattr, [obj] + attr.split("."))
-
-
-class EnsampleLayer(nn.ModuleList):
-    def __init__(self, submodule, size=5):
-        super().__init__()
-        for _ in range(size):
-            self.append(deepcopy(submodule))
-
-    def forward(self, *args, **kwargs):
-        idx = np.random.randint(len(self))
-        return self[idx](*args, **kwargs)
-
-
-def brier_multi(probs, targets):
-    n_class = probs.shape[1]
-    return (probs - torch.nn.functional.one_hot(targets, n_class)).pow(2.0).sum(dim=-1).mean()
 
 
 def create_mixensamble(module, n_ensemble, level="block"):
@@ -107,9 +81,13 @@ class DeepEnsembles(LightningModule):
                 logger=False,
                 accelerator="auto",
                 devices=1,
-                callbacks=[callbacks.EarlyStopping(monitor="val_acc", mode="max", patience=5)],
+                callbacks=[
+                    callbacks.EarlyStopping(monitor="val_acc", mode="max", patience=5)
+                ],
             )
-            trainer.fit(model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader)
+            trainer.fit(
+                model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
+            )
             model.eval()
             models.append(deepcopy(model))
         return models
@@ -123,7 +101,7 @@ class DeepEnsembles(LightningModule):
                 pred = cls.get_predictions(model, x)
                 acc += accuracy(pred, y, num_classes=10).item()
                 nll += torch.nn.functional.nll_loss(pred, y).item()
-                brier += brier_multi(pred, y).item()
+                brier += brier(pred, y).item()
             acc = acc / len(test_dataloader)
             nll = nll / len(test_dataloader)
             brier = brier / len(test_dataloader)
@@ -148,9 +126,13 @@ class MixLayerEnsembles(DeepEnsembles):
             logger=False,
             accelerator="auto",
             devices=1,
-            callbacks=[callbacks.EarlyStopping(monitor="val_acc", mode="max", patience=5)],
+            callbacks=[
+                callbacks.EarlyStopping(monitor="val_acc", mode="max", patience=5)
+            ],
         )
-        trainer.fit(model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader)
+        trainer.fit(
+            model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
+        )
         model.eval()
         return model
 
@@ -160,27 +142,32 @@ class MixBlockEnsembles(DeepEnsembles):
 
 
 if __name__ == "__main__":
-    with open("classification_scores.txt", "w") as file:
+    os.makedirs("results/", exist_ok=True)
+    with open("results/classification_scores.txt", "w") as file:
         file.write("dataset, model_class, n_ensemble, train_time, acc, nll, brier \n")
 
-    for dataset_name in ['svhn', 'cifar10']:
-        if dataset_name=='svhn':
+    for dataset_name in ["svhn", "cifar10"]:
+        if dataset_name == "svhn":
             dataset_class = torchvision.datasets.SVHN
-        elif dataset_name=='cifar10':
+        elif dataset_name == "cifar10":
             dataset_class = torchvision.datasets.CIFAR10
         dataset = dataset_class(
-            root=f"{dataset_name}/", download=True, split="train", transform=torchvision.transforms.ToTensor()
+            root=f"data/{dataset_name}/",
+            download=True,
+            split="train",
+            transform=torchvision.transforms.ToTensor(),
         )
 
         n = len(dataset)
         n_train = int(n * 0.9)
         n_val = int(n * 0.05)
         n_test = n - n_train - n_val
-        train, val, test = torch.utils.data.random_split(dataset, [n_train, n_val, n_test])
+        train, val, test = torch.utils.data.random_split(
+            dataset, [n_train, n_val, n_test]
+        )
         train_dataloader = torch.utils.data.DataLoader(train, batch_size=128)
         val_dataloader = torch.utils.data.DataLoader(val, batch_size=128)
         test_dataloader = torch.utils.data.DataLoader(test, batch_size=128)
-
 
         for model_class in [DeepEnsembles, MixLayerEnsembles, MixBlockEnsembles]:
             model_name = model_class.__name__
@@ -193,21 +180,24 @@ if __name__ == "__main__":
 
                 start = time.time()
                 try:
-                    model = model_class.fit(n_ensemble, train_dataloader, val_dataloader)
+                    model = model_class.fit(
+                        n_ensemble, train_dataloader, val_dataloader
+                    )
                 except Exception as e:
                     print(f"Exception happened: {e}")
                     continue
                 end = time.time()
 
-                os.makedirs('trained_classification_models/', exist_ok=True)
-                with open(f'trained_classification_models/{dataset_name}_{model_name}_{n_ensemble}.pkl', 'wb') as file:
+                os.makedirs("models/classification_models/", exist_ok=True)
+                with open(
+                    f"models/classification_models/{dataset_name}_{model_name}_{n_ensemble}.pkl",
+                    "wb",
+                ) as file:
                     pkl.dump(model, file)
 
                 acc, nll, brier = model_class.ensample_predict(model, test_dataloader)
 
-                with open("classification_scores.txt", "a") as file:
+                with open("results/classification_scores.txt", "a") as file:
                     file.write(
                         f"{dataset_name}, {model_name}, {n_ensemble}, {end-start}, {acc}, {nll}, {brier} \n"
                     )
-
-                

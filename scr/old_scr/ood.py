@@ -12,7 +12,7 @@ from copy import deepcopy
 from tqdm import tqdm
 
 from models import get_model
-from data import get_data
+from scr.old_scr import get_data
 
 
 def get_encodings(model: LightningModule, dataloader: torch.utils.data.DataLoader) -> torch.Tensor:

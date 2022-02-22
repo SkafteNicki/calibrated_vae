@@ -1,5 +1,5 @@
-pytorch-lightning
 torch
+pytorch-lightning
 wandb
 numpy
 matplotlib

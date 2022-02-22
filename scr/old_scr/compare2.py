@@ -2,7 +2,7 @@ import torch
 from torch import distributions as D
 from tqdm import tqdm
 from models import get_model
-from data import get_data
+from scr.old_scr import get_data
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
