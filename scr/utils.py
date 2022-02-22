@@ -15,7 +15,12 @@ def ll(x, mean, var):
 
 def brierscore(probs, targets):
     n_class = probs.shape[1]
-    return (probs - torch.nn.functional.one_hot(targets, n_class)).pow(2.0).sum(dim=-1).mean()
+    return (
+        (probs - torch.nn.functional.one_hot(targets, n_class))
+        .pow(2.0)
+        .sum(dim=-1)
+        .mean()
+    )
 
 
 def rsetattr(obj, attr, val):

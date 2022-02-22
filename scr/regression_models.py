@@ -7,7 +7,9 @@ from scr.layers import EnsampleLayer
 class Ensamble(nn.Module):
     def __init__(self, input_dim, hidden_dim, activate_fn):
         super().__init__()
-        self.model = nn.Sequential(nn.Linear(input_dim, hidden_dim), activate_fn, nn.Linear(hidden_dim, 1))
+        self.model = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim), activate_fn, nn.Linear(hidden_dim, 1)
+        )
 
     def forward(self, x):
         return self.model(x)
@@ -58,7 +60,9 @@ class MixEnsemble(nn.Module):
     def __init__(self, input_dim, hidden_dim, activate_fn):
         super().__init__()
         self.model = nn.Sequential(
-            EnsampleLayer(nn.Linear(input_dim, hidden_dim)), activate_fn, EnsampleLayer(nn.Linear(hidden_dim, 1))
+            EnsampleLayer(nn.Linear(input_dim, hidden_dim)),
+            activate_fn,
+            EnsampleLayer(nn.Linear(hidden_dim, 1)),
         )
 
     def forward(self, x):
@@ -83,7 +87,9 @@ class MixEnsembleNLL(nn.Module):
             activate_fn,
         )
         self.head1 = EnsampleLayer(nn.Linear(hidden_dim, 1))
-        self.head2 = nn.Sequential(EnsampleLayer(nn.Linear(hidden_dim, 1)), nn.Softplus())
+        self.head2 = nn.Sequential(
+            EnsampleLayer(nn.Linear(hidden_dim, 1)), nn.Softplus()
+        )
 
     def forward(self, x):
         base = self.base(x)

@@ -14,7 +14,7 @@ class EnsampleLayer(nn.ModuleList):
         self.index = None
 
     def forward(self, *args, **kwargs):
-        if 'index' in kwargs:
+        if "index" in kwargs:
             idx = kwargs.pop("index")
         elif self.index is not None:
             idx = self.index

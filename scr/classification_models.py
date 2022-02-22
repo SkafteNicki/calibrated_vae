@@ -1,4 +1,3 @@
-
 from copy import deepcopy
 
 import torch
@@ -58,7 +57,7 @@ class DeepEnsembles(LightningModule):
                 callbacks=[
                     callbacks.EarlyStopping(monitor="val_acc", mode="max", patience=5)
                 ],
-                max_epochs=1
+                max_epochs=1,
             )
             trainer.fit(
                 model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
@@ -71,7 +70,7 @@ class DeepEnsembles(LightningModule):
     def ensample_predict(cls, model, test_dataloader):
         with torch.no_grad():
             acc, nll, brier = 0.0, 0.0, 0.0
-            for batch in tqdm(test_dataloader, desc='Evaluating test set'):
+            for batch in tqdm(test_dataloader, desc="Evaluating test set"):
                 x, y = batch
                 pred = cls.get_predictions(model, x)
                 acc += accuracy(pred, y, num_classes=10).item()
@@ -104,7 +103,7 @@ class MixLayerEnsembles(DeepEnsembles):
             callbacks=[
                 callbacks.EarlyStopping(monitor="val_acc", mode="max", patience=5)
             ],
-            max_epochs=1
+            max_epochs=1,
         )
         trainer.fit(
             model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
