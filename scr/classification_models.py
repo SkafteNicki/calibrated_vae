@@ -15,15 +15,18 @@ from scr.utils import brierscore
 
 
 class DeepEnsembles(LightningModule):
-    trainer_config = {
-        "logger": loggers.WandbLogger() if "ENABLE_LOGGING" in os.environ else False,
-        "accelerator": "auto",
-        "devices": 1,
-        "callbacks": [
-            callbacks.EarlyStopping(monitor="val_acc", mode="max", patience=5)
-        ],
-    }
-
+    @classmethod
+    @property
+    def trainer_config(cls):
+        config = {
+            "logger": loggers.WandbLogger() if "ENABLE_LOGGING" in os.environ else False,
+            "accelerator": "auto",
+            "devices": 1,
+            "callbacks": [
+                callbacks.EarlyStopping(monitor="val_acc", mode="max", patience=5)
+            ],
+        }
+        return config
     
     def __init__(self):
         super().__init__()
@@ -32,9 +35,6 @@ class DeepEnsembles(LightningModule):
         self.loss_fn = nn.CrossEntropyLoss()
 
         self.val_acc = Accuracy(num_classes=10)
-        
-
-
 
     def forward(self, x):
         return self.base(x)
