@@ -13,6 +13,15 @@ from scr.utils import brierscore
 
 
 class DeepEnsembles(LightningModule):
+    trainer_config = {
+        "logger": False,
+        "accelerator": "auto",
+        "devices": 1,
+        "callbacks": [
+            callbacks.EarlyStopping(monitor="val_acc", mode="max", patience=5)
+        ],
+    }
+
     def __init__(self):
         super().__init__()
         self.base = torchvision.models.resnet18(pretrained=False)
@@ -35,7 +44,9 @@ class DeepEnsembles(LightningModule):
     def validation_step(self, batch, batch_idx):
         x, y = batch
         preds = self(x)
+        val_loss = self.loss_fn(preds, y)
         self.val_acc.update(preds, y)
+        self.log("val_loss", val_loss, on_epoch=True, prog_bar=True)
         self.log("val_acc", self.val_acc, on_epoch=True, prog_bar=True)
 
     def configure_optimizers(self):
@@ -50,14 +61,7 @@ class DeepEnsembles(LightningModule):
         models = []
         for _ in range(n_ensemble):
             model = cls()
-            trainer = Trainer(
-                logger=False,
-                accelerator="auto",
-                devices=1,
-                callbacks=[
-                    callbacks.EarlyStopping(monitor="val_acc", mode="max", patience=5)
-                ],
-            )
+            trainer = Trainer(**cls.trainer_config)
             trainer.fit(
                 model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
             )
@@ -74,7 +78,7 @@ class DeepEnsembles(LightningModule):
                 pred = cls.get_predictions(model, x)
                 acc += accuracy(pred, y, num_classes=10).item()
                 nll += torch.nn.functional.nll_loss(pred, y).item()
-                brier += brierscore(pred, y).item()
+                brier += brierscore(pred.softmax(dim=-1), y).item()
             acc = acc / len(test_dataloader)
             nll = nll / len(test_dataloader)
             brier = brier / len(test_dataloader)
@@ -95,14 +99,7 @@ class MixLayerEnsembles(DeepEnsembles):
     @classmethod
     def fit(cls, n_ensemble, train_dataloader, val_dataloader=None):
         model = cls(n_ensemble)
-        trainer = Trainer(
-            logger=False,
-            accelerator="auto",
-            devices=1,
-            callbacks=[
-                callbacks.EarlyStopping(monitor="val_acc", mode="max", patience=5)
-            ],
-        )
+        trainer = Trainer(**cls.trainer_config)
         trainer.fit(
             model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
         )

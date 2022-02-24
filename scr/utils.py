@@ -2,6 +2,7 @@ import functools
 
 import torch
 import torch.distributions as D
+from scipy.spatial.distance import cosine
 
 
 def rmse(x, mean):
@@ -21,6 +22,16 @@ def brierscore(probs, targets):
         .sum(dim=-1)
         .mean()
     )
+
+
+def cosine_sim(x, y):
+    return 1 - cosine(x, y)
+
+
+def disagreeement_score(m1, m2, x):
+    pred1 = m1(x).argmax(dim=-1)
+    pred2 = m2(x).argmax(dim=-1)
+    return (pred1 != pred2).float().mean()
 
 
 def rsetattr(obj, attr, val):
