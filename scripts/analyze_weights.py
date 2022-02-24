@@ -3,7 +3,7 @@ import pickle as pkl
 from copy import deepcopy
 from itertools import product
 from torch import nn
-
+import torch
 import numpy as np
 
 from scr.classification_models import (
@@ -39,15 +39,20 @@ if __name__ == "__main__":
         model = pkl.load(file)
 
     if args.test_data is not None:
-        test_data = get_dataset(args.test_data)
+        _, _, test_data = get_dataset(args.test_data)
+        test_data = torch.utils.data.Subset(test_data, list(np.random.permutation(1000)))
+        test = torch.utils.data.DataLoader(test_data, batch_size=10)
 
     # deep ensemble
     if isinstance(model, list):
         n = len(model)
-        sim = np.zeros((n, n))
+        sim = np.ones((n, n))
         dis = np.zeros((n, n))
         for i in range(n):
-            for j in range(n):
+            for j in range(i,n):
+                print(f'Comparing ensemble {i} and {j}')
+                if i == j: continue
+
                 weight1 = np.concatenate(
                     [w.detach().flatten().numpy() for w in model[i].parameters()]
                 )
@@ -55,26 +60,42 @@ if __name__ == "__main__":
                     [w.detach().flatten().numpy() for w in model[j].parameters()]
                 )
                 sim[i, j] = cosine_sim(weight1, weight2)
-                if test_data is not None:
-                    dis[i, j] = disagreeement_score(model[i], model[j], test_data)
-
+                if args.test_data is not None:
+                    for batch in test:
+                        with torch.no_grad():
+                            dis[i, j] += disagreeement_score(model[i], model[j], batch[0])
+                    dis[i,j] /= len(test)
+                    
+                sim[j, i] = sim[i, j]
+                dis[j, i] = sim[i, j]
 
         if args.test_data is not None:
+            n_batches = 50
             embeddings = [ ]
             for m in model:
-                for i, batch in enumerate(torch.utils.data.DataLoader(test_data, batch_size=10)):
-                    if i == 10: break
-                    temp = deepcopy(model[i])
-                    temp.fc = nn.Identity()
-                    embeddings.append(temp(batch[0]).reshape(-1))
+                temp = deepcopy(m)
+                temp.base.fc = nn.Identity()
+                with torch.no_grad():
+                    for i, batch in enumerate(torch.utils.data.DataLoader(test_data, batch_size=10)):
+                        if i == n_batches: break    
+                        embeddings.append(temp(batch[0]).reshape(-1))
             from sklearn.manifold import TSNE
 
-            embeddings = torch.stack(embeddings).numpy()
+            embeddings = torch.stack(embeddings).detach().numpy()
 
             tsne = TSNE(n_components=2)
-            tsne.fit(embeddings)
-
-
+            tsne_embeddings = tsne.fit_transform(embeddings)
+            
+            import matplotlib.pyplot as plt
+            plt.figure()
+            for i in range(len(model)):
+                plt.plot(
+                    tsne_embeddings[n_batches*i:n_batches*(i+1), 0],
+                    tsne_embeddings[n_batches*i:n_batches*(i+1), 1],
+                    '.',
+                    label=f"model_{i}"
+                )
+            plt.legend()
 
     # mix ensemble
     else:
@@ -85,14 +106,16 @@ if __name__ == "__main__":
             [m for m in model.modules() if isinstance(m, EnsampleLayer)][0]
         )
         n = n_ensemble_size ** n_ensemble_layers
-        sim = np.zeros((n, n))
+        sim = np.ones((n, n))
+        dis = np.zeros((n, n))
         combinations = get_all_combinations(n_ensemble_size, n_ensemble_layers)
         for i, comb1 in enumerate(combinations):
             for j, comb2 in enumerate(combinations):
+                print(f'Comparing ensemble {i} and {j}')
                 if i == j:
                     sim[i, j] = 1.0
                     continue
-                if sim[j, i] != 0.0:
+                if sim[j, i] != 1.0:
                     sim[i, j] = sim[j, i]
                     continue
 
@@ -116,5 +139,11 @@ if __name__ == "__main__":
                     [w.detach().flatten().numpy() for w in temp2.parameters()]
                 )
                 sim[i, j] = cosine_sim(weight1, weight2)
+                
+                if args.test_data is not None:
+                    for batch in test:
+                        with torch.no_grad():
+                            dis[i, j] += disagreeement_score(temp1, temp2, batch[0])
+                    dis[i,j] /= len(test)                
 
                 del temp1, temp2, weight1, weight2

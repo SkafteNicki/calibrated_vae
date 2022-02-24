@@ -1,6 +1,7 @@
 import os
 import pickle as pkl
 import time
+from sklearn import ensemble
 
 import torch
 
@@ -26,7 +27,12 @@ if __name__ == "__main__":
 
         for model_class in [DeepEnsembles, MixLayerEnsembles, MixBlockEnsembles]:
             model_name = model_class.__name__
-            for n_ensemble in [1, 2, 3, 4, 5, 8, 10, 12, 15, 20, 25]:
+            if model_class == DeepEnsembles:
+                ensemble_list = [1, 2, 3, 4, 5, 8, 10, 12, 15, 20]
+            else:
+                ensemble_list = [1, 2, 3, 4, 5, 8, 10, 12, 15, 20]
+            
+            for n_ensemble in [1]:
                 print(
                     "==================================================================== \n"
                     f"Dataset={dataset_name}, Model={model_name}, n_ensemble={n_ensemble} \n"
@@ -40,7 +46,7 @@ if __name__ == "__main__":
                     )
                     train_end = time.time()
 
-                    os.makedirs("models/classification_models/", exist_ok=True)
+                    os.makedirs("models/classification_models/", exist_ok=True)    
                     with open(
                         f"models/classification_models/{dataset_name}_{model_name}_{n_ensemble}.pkl",
                         "wb",

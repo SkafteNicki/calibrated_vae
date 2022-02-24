@@ -4,3 +4,4 @@ figures/
 models/
 results/
 checkpoints/
+wandb/

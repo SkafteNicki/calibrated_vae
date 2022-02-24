@@ -1,12 +1,14 @@
 from copy import deepcopy
+import os
 
 import torch
 import torchvision
-from pytorch_lightning import LightningModule, Trainer, callbacks
+from pytorch_lightning import LightningModule, Trainer, callbacks, loggers
 from torch import nn
 from torchmetrics import Accuracy
 from torchmetrics.functional import accuracy
 from tqdm import tqdm
+import wandb
 
 from scr.layers import create_mixensamble
 from scr.utils import brierscore
@@ -14,7 +16,7 @@ from scr.utils import brierscore
 
 class DeepEnsembles(LightningModule):
     trainer_config = {
-        "logger": False,
+        "logger": loggers.WandbLogger() if "ENABLE_LOGGING" in os.environ else False,
         "accelerator": "auto",
         "devices": 1,
         "callbacks": [
@@ -22,6 +24,7 @@ class DeepEnsembles(LightningModule):
         ],
     }
 
+    
     def __init__(self):
         super().__init__()
         self.base = torchvision.models.resnet18(pretrained=False)
@@ -29,6 +32,9 @@ class DeepEnsembles(LightningModule):
         self.loss_fn = nn.CrossEntropyLoss()
 
         self.val_acc = Accuracy(num_classes=10)
+        
+
+
 
     def forward(self, x):
         return self.base(x)
@@ -38,6 +44,7 @@ class DeepEnsembles(LightningModule):
         preds = self(x)
         loss = self.loss_fn(preds, y)
         acc = accuracy(preds, y, num_classes=10)
+        self.log("loss", loss)
         self.log("acc", acc, prog_bar=True)
         return loss
 
@@ -65,6 +72,7 @@ class DeepEnsembles(LightningModule):
             trainer.fit(
                 model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
             )
+            if "ENABLE_LOGGING" in os.environ: wandb.finish()
             model.eval()
             models.append(deepcopy(model))
         return models
@@ -103,6 +111,7 @@ class MixLayerEnsembles(DeepEnsembles):
         trainer.fit(
             model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
         )
+        if "ENABLE_LOGGING" in os.environ: wandb.finish()
         model.eval()
         return model
 
