@@ -20,28 +20,26 @@ np.random.seed(SEED)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', default='all', type=str)
+    parser.add_argument("--dataset", default="all", type=str)
     args = parser.parse_args()
 
-    if args.dataset == 'all':
+    if args.dataset == "all":
         datasets = [
-            'boston',
-            'concrete',
-            'naval',
-            'power_plant',
-            'protein_structure',
-            'wine_red',
-            'wine_white',
-            'yacht_hydrodynamics',
+            "boston",
+            "concrete",
+            "naval",
+            "power_plant",
+            "protein_structure",
+            "wine_red",
+            "wine_white",
+            "yacht_hydrodynamics",
         ]
     else:
         datasets = [args.dataset]
-    
+
     os.makedirs("results/", exist_ok=True)
     with open("results/uci_benchmark_scores.txt", "w") as file:
-        file.write(
-            "dataset, model_class, n_ensemble, train_time, rmse, ll \n"
-        )
+        file.write("dataset, model_class, n_ensemble, train_time, rmse, ll \n")
 
     for dataset in datasets:
         with open(f"data/uci_datasets/{dataset}_uci_dataset.pkl", "rb") as file:
@@ -62,12 +60,18 @@ if __name__ == "__main__":
 
                 data_scaler = StandardScaler()
                 data_scaler.fit(train_data)
-                train_data = tensor(data_scaler.transform(train_data), dtype=torch.float32)
-                test_data = tensor(data_scaler.transform(test_data), dtype=torch.float32)
+                train_data = tensor(
+                    data_scaler.transform(train_data), dtype=torch.float32
+                )
+                test_data = tensor(
+                    data_scaler.transform(test_data), dtype=torch.float32
+                )
 
                 target_scaler = StandardScaler()
                 target_scaler.fit(train_target)
-                train_target = tensor(target_scaler.transform(train_target), dtype=torch.float32)
+                train_target = tensor(
+                    target_scaler.transform(train_target), dtype=torch.float32
+                )
 
                 train = DataLoader(
                     TensorDataset(train_data, train_target),
@@ -100,7 +104,9 @@ if __name__ == "__main__":
                 x, y = torch.tensor(test_data, dtype=torch.float32), torch.tensor(
                     test_target, dtype=torch.float32
                 )
-                mean, var = model_class.ensample_predict(models, x, scaler=target_scaler)
+                mean, var = model_class.ensample_predict(
+                    models, x, scaler=target_scaler
+                )
 
                 scores["rmse"].append(rmse(y, mean))
                 scores["nll"].append(ll(y, mean, var))
@@ -110,7 +116,6 @@ if __name__ == "__main__":
                 file.write(
                     f"{dataset}, {str(model_class)}, {5}, {scores['time']}, {scores['rmse']}, {scores['nll']} \n"
                 )
-
 
             print(
                 f"Model {model_class.__name__}. \n"

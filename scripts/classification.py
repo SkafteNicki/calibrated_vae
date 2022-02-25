@@ -1,9 +1,9 @@
 import os
 import pickle as pkl
 import time
-from sklearn import ensemble
 
 import torch
+import wandb
 
 from scr.classification_models import (
     DeepEnsembles,
@@ -31,7 +31,7 @@ if __name__ == "__main__":
                 ensemble_list = [1, 2, 3, 4, 5, 8, 10, 12, 15, 20]
             else:
                 ensemble_list = [1, 2, 3, 4, 5, 8, 10, 12, 15, 20]
-            
+
             for n_ensemble in [1]:
                 print(
                     "==================================================================== \n"
@@ -45,8 +45,17 @@ if __name__ == "__main__":
                         n_ensemble, train_dataloader, val_dataloader
                     )
                     train_end = time.time()
+                    if "ENABLE_LOGGING" in os.environ:
+                        wandb.config.update(
+                            {
+                                "dataset": dataset_name,
+                                "model_class": model_class,
+                                "n_ensemble": n_ensemble,
+                            }
+                        )
+                        wandb.finish()
 
-                    os.makedirs("models/classification_models/", exist_ok=True)    
+                    os.makedirs("models/classification_models/", exist_ok=True)
                     with open(
                         f"models/classification_models/{dataset_name}_{model_name}_{n_ensemble}.pkl",
                         "wb",

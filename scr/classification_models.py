@@ -19,7 +19,9 @@ class DeepEnsembles(LightningModule):
     @property
     def trainer_config(cls):
         config = {
-            "logger": loggers.WandbLogger() if "ENABLE_LOGGING" in os.environ else False,
+            "logger": loggers.WandbLogger()
+            if "ENABLE_LOGGING" in os.environ
+            else False,
             "accelerator": "auto",
             "devices": 1,
             "callbacks": [
@@ -27,7 +29,7 @@ class DeepEnsembles(LightningModule):
             ],
         }
         return config
-    
+
     def __init__(self):
         super().__init__()
         self.base = torchvision.models.resnet18(pretrained=False)
@@ -72,7 +74,6 @@ class DeepEnsembles(LightningModule):
             trainer.fit(
                 model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
             )
-            if "ENABLE_LOGGING" in os.environ: wandb.finish()
             model.eval()
             models.append(deepcopy(model))
         return models
@@ -111,7 +112,6 @@ class MixLayerEnsembles(DeepEnsembles):
         trainer.fit(
             model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
         )
-        if "ENABLE_LOGGING" in os.environ: wandb.finish()
         model.eval()
         return model
 
