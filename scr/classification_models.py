@@ -8,7 +8,6 @@ from torch import nn
 from torchmetrics import Accuracy
 from torchmetrics.functional import accuracy
 from tqdm import tqdm
-import wandb
 
 from scr.layers import create_mixensamble
 from scr.utils import brierscore
@@ -23,10 +22,13 @@ class DeepEnsembles(LightningModule):
             if "ENABLE_LOGGING" in os.environ
             else False,
             "accelerator": "auto",
+            "num_sanity_val_steps": 0,
             "devices": 1,
             "callbacks": [
-                callbacks.EarlyStopping(monitor="val_acc", mode="max", patience=5)
+                callbacks.EarlyStopping(monitor="val_loss", mode="min", patience=10)
             ],
+            "gradient_clip_val": 1.0,
+            "min_epochs": 20
         }
         return config
 
@@ -118,3 +120,22 @@ class MixLayerEnsembles(DeepEnsembles):
 
 class MixBlockEnsembles(MixLayerEnsembles):
     level = "block"
+
+
+class DeepMixLayerEnsembles(MixLayerEnsembles):
+    @staticmethod
+    def get_predictions(model, x):
+        return torch.stack([m(x) for m in model for _ in range(25)]).mean(dim=0)
+
+    @classmethod
+    def fit(cls, n_ensemble, train_dataloader, val_dataloader=None):
+        models = []
+        for _ in range(n_ensemble):
+            model = cls(n_ensemble)
+            trainer = Trainer(**cls.trainer_config)
+            trainer.fit(
+                model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
+            )
+            model.eval()
+            models.append(deepcopy(model))
+        return models

@@ -9,6 +9,7 @@ from scr.classification_models import (
     DeepEnsembles,
     MixBlockEnsembles,
     MixLayerEnsembles,
+    DeepMixLayerEnsembles,
 )
 from scr.data import get_dataset
 
@@ -25,14 +26,9 @@ if __name__ == "__main__":
         val_dataloader = torch.utils.data.DataLoader(val, batch_size=64)
         test_dataloader = torch.utils.data.DataLoader(test, batch_size=64)
 
-        for model_class in [DeepEnsembles, MixLayerEnsembles, MixBlockEnsembles]:
+        for model_class in [DeepEnsembles, MixLayerEnsembles, MixBlockEnsembles, DeepMixLayerEnsembles]:
             model_name = model_class.__name__
-            if model_class == DeepEnsembles:
-                ensemble_list = [1, 2, 3, 4, 5, 8, 10, 12, 15, 20]
-            else:
-                ensemble_list = [1, 2, 3, 4, 5, 8, 10, 12, 15, 20]
-
-            for n_ensemble in [1]:
+            for n_ensemble in [1, 2, 3]:
                 print(
                     "==================================================================== \n"
                     f"Dataset={dataset_name}, Model={model_name}, n_ensemble={n_ensemble} \n"
@@ -49,7 +45,7 @@ if __name__ == "__main__":
                         wandb.config.update(
                             {
                                 "dataset": dataset_name,
-                                "model_class": model_class,
+                                "model_class": model_name,
                                 "n_ensemble": n_ensemble,
                             }
                         )

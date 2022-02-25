@@ -3,5 +3,5 @@ pytorch-lightning
 wandb
 numpy
 matplotlib
-seaborn
-hydra-core
+scikit-learn
+scipy
