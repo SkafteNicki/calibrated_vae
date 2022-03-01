@@ -29,6 +29,32 @@ def get_dataset(dataset_name):
             train=False,
             transform=torchvision.transforms.ToTensor(),
         )
+    elif dataset_name == "mnist":
+        train = torchvision.datasets.MNIST(
+            root=f"data/{dataset_name}/",
+            download=True,
+            train=True,
+            transform=torchvision.transforms.ToTensor(),
+        )
+        test = torchvision.datasets.MNIST(
+            root=f"data/{dataset_name}/",
+            download=True,
+            train=False,
+            transform=torchvision.transforms.ToTensor(),
+        )
+    elif dataset_name == "fmnist":
+        train = torchvision.datasets.FashionMNIST(
+            root=f"data/{dataset_name}/",
+            download=True,
+            train=True,
+            transform=torchvision.transforms.ToTensor(),
+        )
+        test = torchvision.datasets.FashionMNIST(
+            root=f"data/{dataset_name}/",
+            download=True,
+            train=False,
+            transform=torchvision.transforms.ToTensor(),
+        )
     else:
         raise ValueError("Unknown dataset")
 
