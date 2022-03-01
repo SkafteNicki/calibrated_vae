@@ -1,12 +1,12 @@
 import argparse
 import pickle
 import time
+import os
 
 import numpy as np
 import torch
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from torch import distributions as D
 from torch import nn, tensor
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -48,6 +48,7 @@ if __name__ == "__main__":
         input_size = data.shape[1]
 
         for model_class in [Ensamble, EnsambleNLL, MixEnsemble, MixEnsembleNLL]:
+            model_name = model_class.__name__
             scores = {"rmse": [], "nll": [], "time": []}
 
             for rep in range(20):
@@ -60,6 +61,7 @@ if __name__ == "__main__":
 
                 data_scaler = StandardScaler()
                 data_scaler.fit(train_data)
+
                 train_data = tensor(
                     data_scaler.transform(train_data), dtype=torch.float32
                 )
@@ -101,11 +103,9 @@ if __name__ == "__main__":
                     models.append(model)
                 end = time.time()
 
-                x, y = torch.tensor(test_data, dtype=torch.float32), torch.tensor(
-                    test_target, dtype=torch.float32
-                )
+                y = tensor(test_target, dtype=torch.float32)
                 mean, var = model_class.ensample_predict(
-                    models, x, scaler=target_scaler
+                    models, test_data, scaler=target_scaler
                 )
 
                 scores["rmse"].append(rmse(y, mean))
@@ -114,7 +114,7 @@ if __name__ == "__main__":
 
             with open("results/uci_benchmark_scores.txt", "a") as file:
                 file.write(
-                    f"{dataset}, {str(model_class)}, {5}, {scores['time']}, {scores['rmse']}, {scores['nll']} \n"
+                    f"{dataset}, {model_name}, {5}, {scores['time']}, {scores['rmse']}, {scores['nll']} \n"
                 )
 
             print(

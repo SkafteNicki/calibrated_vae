@@ -20,8 +20,10 @@ class Ensamble(nn.Module):
     @staticmethod
     def ensample_predict(model_list, x, scaler=None):
         with torch.no_grad():
-            ypred = torch.stack([model(x) for model in model_list])
-            ypred = ypred if scaler is None else scaler.inverse_transform(ypred)
+            ypred = [model(x) for model in model_list]
+            if scaler is not None:
+                ypred = [scaler.inverse_transform(yp) for yp in ypred]
+            ypred = torch.tensor(ypred)
             return ypred.mean(dim=0), ypred.var(dim=0)
 
 
@@ -47,10 +49,13 @@ class EnsambleNLL(nn.Module):
     @staticmethod
     def ensample_predict(model_list, x, scaler=None):
         with torch.no_grad():
-            means = torch.stack([model(x)[0] for model in model_list])
-            vars = torch.stack([model(x)[1] for model in model_list])
-            means = means if scaler is None else scaler.inverse_transform(means)
-            vars = vars if scaler is None else vars * scaler.vars_
+            means = [model(x)[0] for model in model_list]
+            vars = [model(x)[1] for model in model_list]
+            if scaler is not None:
+                means = [scaler.inverse_transform(m) for m in means]
+                vars = [v * scaler.var_ for v in vars]
+            means = torch.tensor(means)
+            vars = torch.stack(vars)
             mean = means.mean(dim=0)
             var = (vars + means ** 2).mean(dim=0) - mean ** 2
             return mean, var
@@ -74,8 +79,10 @@ class MixEnsemble(nn.Module):
     @staticmethod
     def ensample_predict(model_list, x, scaler=None):
         with torch.no_grad():
-            ypred = torch.stack([model_list[0](x) for _ in range(10)])
-            ypred = ypred if scaler is None else scaler.inverse_transform(ypred)
+            ypred = [model_list[0](x) for _ in range(25)]
+            if scaler is not None:
+                ypred = [scaler.inverse_transform(yp) for yp in ypred]
+            ypred = torch.tensor(ypred)
             return ypred.mean(dim=0), ypred.var(dim=0)
 
 
@@ -103,11 +110,14 @@ class MixEnsembleNLL(nn.Module):
     @staticmethod
     def ensample_predict(model_list, x, scaler=None):
         with torch.no_grad():
-            output = [model_list[0](x) for _ in range(10)]
-            means = torch.stack([out[0] for out in output])
-            vars = torch.stack([out[1] for out in output])
-            means = means if scaler is None else scaler.inverse_transform(means)
-            vars = vars if scaler is None else vars * scaler.vars_
+            output = [model_list[0](x) for _ in range(25)]
+            means = [out[0] for out in output]
+            vars = [out[1] for out in output]
+            if scaler is not None:
+                means = [scaler.inverse_transform(m) for m in means]
+                vars = [v * scaler.var_ for v in vars]
+            means = torch.tensor(means)
+            vars = torch.stack(vars)
             mean = means.mean(dim=0)
             var = (vars + means ** 2).mean(dim=0) - mean ** 2
             return mean, var
