@@ -52,7 +52,6 @@ if __name__ == "__main__":
             scores = {"rmse": [], "nll": [], "time": []}
 
             for rep in range(20):
-                models = []
                 train_index, test_index = train_test_split(
                     np.arange(len(data)), test_size=0.1, random_state=(rep + 1) * SEED
                 )
@@ -88,6 +87,7 @@ if __name__ == "__main__":
                     n_epochs = 40
 
                 start = time.time()
+                models = []
                 for _ in range(reps):
                     # TODO: refactor into model_class.fit
                     model = model_class(input_size, 100, nn.ReLU())
