@@ -40,7 +40,7 @@ class DeepEnsembles(LightningModule):
         if "ENABLE_LOGGING" in os.environ:
             config.pop("logger")
             config.pop("callbacks")
-            wandb.config.update(**config)
+            wandb.config.update(config)
 
     def __init__(self):
         super().__init__()
@@ -115,7 +115,7 @@ class DeepEnsembles(LightningModule):
     def load_checkpoint(cls, path, n_ensemble=None):
         model = cls()
         states = torch.load(path)
-        return [deepcopy(model.load_state_dict(s)) for s in states]
+        return [deepcopy(model.load_state_dict(s)).eval() for s in states]
 
 
 class MixLayerEnsembles(DeepEnsembles):
@@ -149,7 +149,7 @@ class MixLayerEnsembles(DeepEnsembles):
     def load_checkpoint(cls, path, n_ensemble=None):
         model = cls(n_ensemble)
         state = torch.load(path)
-        return model.load_state_dict(state)
+        return (model.load_state_dict(state)).eval()
 
 
 class MixBlockEnsembles(MixLayerEnsembles):
@@ -189,13 +189,27 @@ class DeepMixLayerEnsembles(MixLayerEnsembles):
     def load_checkpoint(cls, path, n_ensemble=None):
         model = cls(n_ensemble)
         states = torch.load(path)
-        return [deepcopy(model.load_state_dict(s)) for s in states]
+        return [deepcopy(model.load_state_dict(s)).eval() for s in states]
 
 
 def get_model(model_name):
     return {
-        'DeepEnsembles': DeepEnsembles,
-        'MixLayerEnsembles': MixLayerEnsembles,
-        'MixBlockEnsembles': MixBlockEnsembles,
-        'DeepMixLayerEnsembles': DeepMixLayerEnsembles
+        "DeepEnsembles": DeepEnsembles,
+        "MixLayerEnsembles": MixLayerEnsembles,
+        "MixBlockEnsembles": MixBlockEnsembles,
+        "DeepMixLayerEnsembles": DeepMixLayerEnsembles,
     }[model_name]
+
+
+def get_classification_model_from_file(path):
+    if "DeepMixLayer" in path:
+        model_class = DeepMixLayerEnsembles
+    elif "MixLayer" in path:
+        model_class = MixLayerEnsembles
+    elif "MixBlock" in path:
+        model_class = MixBlockEnsembles
+    elif "DeepEnsemble" in path:
+        model_class = DeepEnsembles
+
+    n_ensemble = int(path[:-3].split("_")[-1])
+    return model_class.load_checkpoint(path, n_ensemble)
