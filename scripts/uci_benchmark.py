@@ -20,11 +20,11 @@ np.random.seed(SEED)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", default="all", type=str)
-    args = parser.parse_args()
-
-    if args.dataset == "all":
-        datasets = [
+    parser.add_argument(
+        "-d",
+        "--datasets",
+        nargs="+",
+        default=[
             "boston",
             "concrete",
             "naval",
@@ -33,15 +33,22 @@ if __name__ == "__main__":
             "wine_red",
             "wine_white",
             "yacht_hydrodynamics",
-        ]
-    else:
-        datasets = [args.dataset]
-
+        ],
+        type=str,
+    )
+    parser.add_argument(
+        "-e",
+        "--ensemble",
+        default=5,
+        type=int,
+    )
+    args = parser.parse_args()
+    
     os.makedirs("results/", exist_ok=True)
     with open("results/uci_benchmark_scores.txt", "w") as file:
         file.write("dataset, model_class, n_ensemble, train_time, rmse, ll \n")
 
-    for dataset in datasets:
+    for dataset in args.datasets:
         with open(f"data/uci_datasets/{dataset}_uci_dataset.pkl", "rb") as file:
             data, target = pickle.load(file)
         target = target.reshape(-1, 1)
@@ -81,16 +88,15 @@ if __name__ == "__main__":
 
                 if "mix" in model_class.__name__.lower():
                     reps = 1
-                    n_epochs = 500
+                    n_epochs = 200 * args.ensemble
                 else:
-                    reps = 5
-                    n_epochs = 40
+                    reps = args.ensemble
+                    n_epochs = 200
 
                 start = time.time()
                 models = []
                 for _ in range(reps):
-                    # TODO: refactor into model_class.fit
-                    model = model_class(input_size, 100, nn.ReLU())
+                    model = model_class(input_size, 100, nn.ReLU(), args.ensemble)
                     optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
 
                     for epoch in range(n_epochs):

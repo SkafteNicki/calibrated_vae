@@ -1,11 +1,14 @@
+from functools import partial
+
 import torch
 from torch import nn
+from pytorch_lightning import Tra
 
 from scr.layers import EnsampleLayer
 
 
 class Ensamble(nn.Module):
-    def __init__(self, input_dim, hidden_dim, activate_fn):
+    def __init__(self, input_dim, hidden_dim, activate_fn, ensemble_size = 5):
         super().__init__()
         self.model = nn.Sequential(
             nn.Linear(input_dim, hidden_dim), activate_fn, nn.Linear(hidden_dim, 1)
@@ -25,10 +28,10 @@ class Ensamble(nn.Module):
                 ypred = [scaler.inverse_transform(yp) for yp in ypred]
             ypred = torch.tensor(ypred)
             return ypred.mean(dim=0), ypred.var(dim=0)
-
+        
 
 class EnsambleNLL(nn.Module):
-    def __init__(self, input_dim, hidden_dim, activate_fn):
+    def __init__(self, input_dim, hidden_dim, activate_fn, ensemble_size = 5):
         super().__init__()
         self.base = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
@@ -62,12 +65,13 @@ class EnsambleNLL(nn.Module):
 
 
 class MixEnsemble(nn.Module):
-    def __init__(self, input_dim, hidden_dim, activate_fn):
+    def __init__(self, input_dim, hidden_dim, activate_fn, ensemble_size = 5):
         super().__init__()
+        ensemble_layer = partial(EnsampleLayer, size=ensemble_size)
         self.model = nn.Sequential(
-            EnsampleLayer(nn.Linear(input_dim, hidden_dim)),
+            ensemble_layer(nn.Linear(input_dim, hidden_dim)),
             activate_fn,
-            EnsampleLayer(nn.Linear(hidden_dim, 1)),
+            ensemble_layer(nn.Linear(hidden_dim, 1)),
         )
 
     def forward(self, x):
@@ -87,15 +91,16 @@ class MixEnsemble(nn.Module):
 
 
 class MixEnsembleNLL(nn.Module):
-    def __init__(self, input_dim, hidden_dim, activate_fn):
+    def __init__(self, input_dim, hidden_dim, activate_fn, ensemble_size = 5):
         super().__init__()
+        ensemble_layer = partial(EnsampleLayer, size=ensemble_size)
         self.base = nn.Sequential(
-            EnsampleLayer(nn.Linear(input_dim, hidden_dim)),
+            ensemble_layer(nn.Linear(input_dim, hidden_dim)),
             activate_fn,
         )
-        self.head1 = EnsampleLayer(nn.Linear(hidden_dim, 1))
+        self.head1 = ensemble_layer(nn.Linear(hidden_dim, 1))
         self.head2 = nn.Sequential(
-            EnsampleLayer(nn.Linear(hidden_dim, 1)), nn.Softplus()
+            ensemble_layer(nn.Linear(hidden_dim, 1)), nn.Softplus()
         )
 
     def forward(self, x):
