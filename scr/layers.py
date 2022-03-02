@@ -1,5 +1,5 @@
 from copy import deepcopy
-
+from random import randint
 import numpy as np
 from torch import nn
 
@@ -11,17 +11,21 @@ class EnsampleLayer(nn.ModuleList):
         super().__init__()
         for _ in range(size):
             self.append(deepcopy(submodule))
-        self.index = None
+        self.size = size
 
     def forward(self, *args, **kwargs):
-        if "index" in kwargs:
-            idx = kwargs.pop("index")
-        elif self.index is not None:
-            idx = self.index
-        else:
-            idx = np.random.randint(len(self))
+        idx = randint(0, self.size-1)
         return self[idx](*args, **kwargs)
 
+
+class FixedEnsempleLayer(EnsampleLayer):
+    def __init__(self, submodule, size=5):
+        pass
+    
+    def forward(self, *args, **kwargs):
+        idx = randint(0, self.size-1)
+        return self[idx](*args, **kwargs)    
+    
 
 def create_mixensamble(module, n_ensemble, level="block"):
     if level == "block":

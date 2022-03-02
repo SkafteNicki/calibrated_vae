@@ -1,11 +1,21 @@
 import torch
 from torchvision import datasets, transforms
 
-rbg_transform = lambda : transforms.ToTensor()
-gray_transform = lambda : transforms.Compose([
-    transforms.Grayscale(num_output_channels=3),
-    transforms.ToTensor(),
-])
+def rgb_transform(dataset):
+    data = torch.tensor(dataset.data)
+    if hasattr(dataset, 'targets'):
+        targets = torch.tensor(dataset.targets)
+        data = data.permute(0, 3, 1, 2)
+    else:
+        targets = torch.tensor(dataset.labels)
+    return torch.utils.data.TensorDataset(data, targets)
+
+
+def gray_transform(dataset):
+    data = torch.tensor(dataset.data[:,None].repeat(1,3,1,1))
+    targets = torch.tensor(dataset.targets)
+    return torch.utils.data.TensorDataset(data, targets)
+
 
 def get_dataset(dataset_name):
     if dataset_name == "svhn":
@@ -13,53 +23,53 @@ def get_dataset(dataset_name):
             root=f"data/{dataset_name}/",
             download=True,
             split="train",
-            transform=rbg_transform(),
         )
         test = datasets.SVHN(
             root=f"data/{dataset_name}/",
             download=True,
             split="test",
-            transform=rbg_transform(),
         )
+        train = rgb_transform(train)
+        test = rgb_transform(test)
     elif dataset_name == "cifar10":
         train = datasets.CIFAR10(
             root=f"data/{dataset_name}/",
             download=True,
             train=True,
-            transform=rbg_transform(),
         )
         test = datasets.CIFAR10(
             root=f"data/{dataset_name}/",
             download=True,
             train=False,
-            transform=rbg_transform(),
         )
+        train = rgb_transform(train)
+        test = rgb_transform(test)
     elif dataset_name == "mnist":
         train = datasets.MNIST(
             root=f"data/{dataset_name}/",
             download=True,
             train=True,
-            transform=gray_transform()
         )
         test = datasets.MNIST(
             root=f"data/{dataset_name}/",
             download=True,
             train=False,
-            transform=gray_transform(),
         )
+        train = gray_transform(train)
+        test = gray_transform(test)
     elif dataset_name == "fmnist":
         train = datasets.FashionMNIST(
             root=f"data/{dataset_name}/",
             download=True,
             train=True,
-            transform=gray_transform(),
         )
         test = datasets.FashionMNIST(
             root=f"data/{dataset_name}/",
             download=True,
             train=False,
-            transform=gray_transform(),
         )
+        train = gray_transform(train)
+        test = gray_transform(test)
     else:
         raise ValueError("Unknown dataset")
 
@@ -69,7 +79,7 @@ def get_dataset(dataset_name):
 
 
 if __name__ == "__main__":
-    for dataset_name in ['svhn', 'cifar10', 'mnist', 'fmnist']:
+    for dataset_name in ["svhn", "cifar10", "mnist", "fmnist"]:
         train, val, test = get_dataset(dataset_name)
         for data in [train, val, test]:
             dataloader = torch.utils.data.DataLoader(data, batch_size=1)
