@@ -8,6 +8,7 @@ from torch import nn
 from torchmetrics import Accuracy
 from torchmetrics.functional import accuracy
 from tqdm import tqdm
+import wandb
 
 from scr.layers import create_mixensamble
 from scr.utils import brierscore
@@ -25,10 +26,12 @@ class DeepEnsembles(LightningModule):
             "num_sanity_val_steps": 0,
             "devices": 1,
             "callbacks": [
-                callbacks.EarlyStopping(monitor="val_loss", mode="min", patience=10)
+                callbacks.EarlyStopping(
+                    monitor="val_loss", mode="min", patience=10, verbose=True
+                ),
+                callbacks.RichProgressBar(leave=True),
             ],
-            "gradient_clip_val": 1.0,
-            "min_epochs": 20
+            "min_epochs": 20,
         }
         return config
 
@@ -72,10 +75,13 @@ class DeepEnsembles(LightningModule):
         models = []
         for _ in range(n_ensemble):
             model = cls()
-            trainer = Trainer(**cls.trainer_config)
+            config = cls.trainer_config
+            trainer = Trainer(**config)
             trainer.fit(
                 model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
             )
+            if "ENABLE_LOGGING" in os.environ:
+                wandb.config.update(**config)
             model.eval()
             models.append(deepcopy(model))
         return models
@@ -95,6 +101,16 @@ class DeepEnsembles(LightningModule):
             brier = brier / len(test_dataloader)
             return acc, nll, brier
 
+    @staticmethod
+    def save_checkpoint(model, path):
+        torch.save([m.state_dict() for m in model], path)
+
+    @classmethod
+    def load_checkpoint(cls, path, n_ensemble=None):
+        model = cls()
+        states = torch.load(path)
+        return [deepcopy(model.load_state_dict(s)) for s in states]
+
 
 class MixLayerEnsembles(DeepEnsembles):
     level = "layer"
@@ -110,12 +126,25 @@ class MixLayerEnsembles(DeepEnsembles):
     @classmethod
     def fit(cls, n_ensemble, train_dataloader, val_dataloader=None):
         model = cls(n_ensemble)
-        trainer = Trainer(**cls.trainer_config)
+        config = cls.trainer_config
+        trainer = Trainer(**config)
         trainer.fit(
             model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
         )
+        if "ENABLE_LOGGING" in os.environ:
+            wandb.config.update(**config)
         model.eval()
         return model
+
+    @staticmethod
+    def save_checkpoint(model, path):
+        torch.save(model.state_dict(), path)
+
+    @classmethod
+    def load_checkpoint(cls, path, n_ensemble=None):
+        model = cls(n_ensemble)
+        state = torch.load(path)
+        return model.load_state_dict(state)
 
 
 class MixBlockEnsembles(MixLayerEnsembles):
@@ -127,15 +156,41 @@ class DeepMixLayerEnsembles(MixLayerEnsembles):
     def get_predictions(model, x):
         return torch.stack([m(x) for m in model for _ in range(25)]).mean(dim=0)
 
+    @staticmethod
+    def save_checkpoint(model, path):
+        torch.save([m.state_dict() for m in model], path)
+
     @classmethod
     def fit(cls, n_ensemble, train_dataloader, val_dataloader=None):
         models = []
         for _ in range(n_ensemble):
             model = cls(n_ensemble)
-            trainer = Trainer(**cls.trainer_config)
+            config = cls.trainer_config
+            trainer = Trainer(**config)
             trainer.fit(
                 model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
             )
+            if "ENABLE_LOGGING" in os.environ:
+                wandb.config.update(**config)
             model.eval()
             models.append(deepcopy(model))
         return models
+
+    @staticmethod
+    def save_checkpoint(model, path):
+        torch.save([m.state_dict() for m in model], path)
+
+    @classmethod
+    def load_checkpoint(cls, path, n_ensemble=None):
+        model = cls(n_ensemble)
+        states = torch.load(path)
+        return [deepcopy(model.load_state_dict(s)) for s in states]
+
+
+def get_model(model_name):
+    return {
+        'DeepEnsembles': DeepEnsembles,
+        'MixLayerEnsembles': MixLayerEnsembles,
+        'MixBlockEnsembles': MixBlockEnsembles,
+        'DeepMixLayerEnsembles': DeepMixLayerEnsembles
+    }[model_name]

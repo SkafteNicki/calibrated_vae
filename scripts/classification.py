@@ -1,3 +1,4 @@
+import argparse
 import os
 import pickle as pkl
 import time
@@ -5,30 +6,58 @@ import time
 import torch
 import wandb
 
-from scr.classification_models import (
-    DeepEnsembles,
-    MixBlockEnsembles,
-    MixLayerEnsembles,
-    DeepMixLayerEnsembles,
-)
+from scr.classification_models import get_model
 from scr.data import get_dataset
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-m",
+        "--models", 
+        nargs="+",
+        default=["DeepEnsembles", "MixLayerEnsembles", "MixBlockEnsembles", "DeepMixLayerEnsembles"],
+    )
+    parser.add_argument(
+        "-d",
+        "--datasets",
+        nargs="+",
+        default=["cifar10", "mnist", "fmnist", "svhn"],
+    )
+    parser.add_argument(
+        "-e",
+        "--ensemble",
+        nargs="+",
+        default=[1, 2, 3, 4, 5, 8, 10],
+    )
+    args = parser.parse_args()
+    
+    print(
+        "*************************************************** \n"
+        "Running script with args: \n"
+        f" - models: {args.models} \n"
+        f" - datasets: {args.datasets} \n"
+        f" - ensemble: {args.ensemble} \n"
+        "*************************************************** \n"
+    )
+
     os.makedirs("results/", exist_ok=True)
     with open("results/classification_scores.txt", "w") as file:
         file.write(
             "dataset, model_class, n_ensemble, train_time, inference_time, acc, nll, brier \n"
         )
 
-    for dataset_name in ["cifar10", "svhn"]:
+    import pdb
+    pdb.set_trace()
+
+    for dataset_name in args.datasets:
         train, val, test = get_dataset(dataset_name)
         train_dataloader = torch.utils.data.DataLoader(train, batch_size=64)
         val_dataloader = torch.utils.data.DataLoader(val, batch_size=64)
         test_dataloader = torch.utils.data.DataLoader(test, batch_size=64)
 
-        for model_class in [DeepEnsembles, MixLayerEnsembles, MixBlockEnsembles, DeepMixLayerEnsembles]:
-            model_name = model_class.__name__
-            for n_ensemble in [1, 2, 3]:
+        for model_name in args.models:
+            model_class = get_model(model_name)
+            for n_ensemble in args.ensemble:
                 print(
                     "==================================================================== \n"
                     f"Dataset={dataset_name}, Model={model_name}, n_ensemble={n_ensemble} \n"
@@ -52,11 +81,7 @@ if __name__ == "__main__":
                         wandb.finish()
 
                     os.makedirs("models/classification_models/", exist_ok=True)
-                    with open(
-                        f"models/classification_models/{dataset_name}_{model_name}_{n_ensemble}.pkl",
-                        "wb",
-                    ) as file:
-                        pkl.dump(model, file)
+                    model_class.save_checkpoint(model, f"models/classification_models/{dataset_name}_{model_name}_{n_ensemble}.pt")
 
                     inference_start = time.time()
                     acc, nll, brier = model_class.ensample_predict(
