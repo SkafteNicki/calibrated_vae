@@ -28,6 +28,7 @@ if __name__ == "__main__":
         "--ensemble",
         nargs="+",
         default=[1, 2, 3, 4, 5, 8, 10],
+        type=int
     )
     args = parser.parse_args()
     
@@ -45,9 +46,6 @@ if __name__ == "__main__":
         file.write(
             "dataset, model_class, n_ensemble, train_time, inference_time, acc, nll, brier \n"
         )
-
-    import pdb
-    pdb.set_trace()
 
     for dataset_name in args.datasets:
         train, val, test = get_dataset(dataset_name)
