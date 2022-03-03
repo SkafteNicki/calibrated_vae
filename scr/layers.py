@@ -48,17 +48,17 @@ class AddBound(nn.Module):
 def create_mixensamble(module, n_ensemble, level="block"):
     if level == "block":
         attr_list = [
-            "layer1.0",
-            "layer1.1",
-            "layer2.0",
-            "layer2.1",
-            "layer3.0",
-            "layer3.1",
-            "layer4.0",
-            "layer4.1",
+            "base.layer1.0",
+            "base.layer1.1",
+            "base.layer2.0",
+            "base.layer2.1",
+            "base.layer3.0",
+            "base.layer3.1",
+            "base.layer4.0",
+            "base.layer4.1",
         ]
     elif level == "layer":
-        attr_list = ["layer1", "layer2", "layer3", "layer4"]
+        attr_list = ["base.layer1", "base.layer2", "base.layer3", "base.layer4"]
     elif level == "conv":
         attr_list = [ ]
         for name, layer in module.named_modules():
@@ -67,6 +67,5 @@ def create_mixensamble(module, n_ensemble, level="block"):
     else:
         raise ValueError('Unknown level for ensemble')
 
-    base = getattr(module, "base")
     for attr in attr_list:
-        rsetattr(base, attr, EnsampleLayer(rgetattr(base, attr), n_ensemble))
+        rsetattr(module, attr, EnsampleLayer(rgetattr(module, attr), n_ensemble))
