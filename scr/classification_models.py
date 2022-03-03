@@ -115,9 +115,13 @@ class DeepEnsembles(LightningModule):
     def load_checkpoint(cls, path, n_ensemble=None):
         model = cls()
         states = torch.load(path)
-        model = [deepcopy(model).load_state_dict(s) for s in states]
-        model = [m.eval() for m in model]
-        return model
+        models = []
+        for s in states:
+            temp = deepcopy(model)
+            temp.load_state_dict(s)
+            temp.eval()
+            models.append(temp)
+        return models
 
 
 class MixLayerEnsembles(DeepEnsembles):
@@ -160,6 +164,10 @@ class MixBlockEnsembles(MixLayerEnsembles):
     level = "block"
 
 
+class MixConvEnsembles(MixLayerEnsembles):
+    level = "conv"
+
+
 class DeepMixLayerEnsembles(MixLayerEnsembles):
     @staticmethod
     def get_predictions(model, x):
@@ -193,9 +201,13 @@ class DeepMixLayerEnsembles(MixLayerEnsembles):
     def load_checkpoint(cls, path, n_ensemble=None):
         model = cls(n_ensemble)
         states = torch.load(path)
-        model = [deepcopy(model).load_state_dict(s) for s in states]
-        model = [m.eval() for m in model]
-        return model
+        models = []
+        for s in states:
+            temp = deepcopy(model)
+            temp.load_state_dict(s)
+            temp.eval()
+            models.append(temp)
+        return models
 
 
 def get_model(model_name):
@@ -203,6 +215,7 @@ def get_model(model_name):
         "DeepEnsembles": DeepEnsembles,
         "MixLayerEnsembles": MixLayerEnsembles,
         "MixBlockEnsembles": MixBlockEnsembles,
+        "MixConvEnsembles": MixConvEnsembles,
         "DeepMixLayerEnsembles": DeepMixLayerEnsembles,
     }[model_name]
 
@@ -214,6 +227,8 @@ def get_classification_model_from_file(path):
         model_class = MixLayerEnsembles
     elif "MixBlock" in path:
         model_class = MixBlockEnsembles
+    elif "MixConv" in path:
+        model_class = MixConvEnsembles
     elif "DeepEnsemble" in path:
         model_class = DeepEnsembles
 

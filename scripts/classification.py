@@ -1,15 +1,17 @@
 import argparse
 import os
-import pickle as pkl
 import time
 
 import torch
 import wandb
+from pytorch_lightning.utilities.seed import seed_everything
 
 from scr.classification_models import get_model
 from scr.data import get_dataset
 
 if __name__ == "__main__":
+    seed_everything(42)
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-m",

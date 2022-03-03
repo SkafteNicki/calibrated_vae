@@ -1,7 +1,7 @@
+from typing import Any
 from copy import deepcopy
 from random import randint
-import numpy as np
-from torch import nn
+from torch import nn, Tensor
 
 from scr.utils import rgetattr, rsetattr
 
@@ -25,7 +25,25 @@ class FixedEnsempleLayer(EnsampleLayer):
     def forward(self, *args, **kwargs):
         idx = randint(0, self.size-1)
         return self[idx](*args, **kwargs)    
-    
+
+
+class Reshape(nn.Module):
+    def __init__(self, *dims: Any):
+        super().__init__()
+        self.dims = dims
+
+    def forward(self, x: Tensor) -> Tensor:
+        return x.reshape(x.shape[0], *self.dims)
+
+
+class AddBound(nn.Module):
+    def __init__(self, epsilon: float = 1e-6):
+        super().__init__()
+        self.epsilon = epsilon
+
+    def forward(self, x: Tensor) -> Tensor:
+        return x + self.epsilon
+
 
 def create_mixensamble(module, n_ensemble, level="block"):
     if level == "block":
@@ -41,8 +59,13 @@ def create_mixensamble(module, n_ensemble, level="block"):
         ]
     elif level == "layer":
         attr_list = ["layer1", "layer2", "layer3", "layer4"]
+    elif level == "conv":
+        attr_list = [ ]
+        for name, layer in module.named_modules():
+            if isinstance(layer, nn.Conv2d):
+                attr_list.append(name)
     else:
-        raise ValueError()
+        raise ValueError('Unknown level for ensemble')
 
     base = getattr(module, "base")
     for attr in attr_list:
