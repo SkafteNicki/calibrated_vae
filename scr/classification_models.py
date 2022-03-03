@@ -115,7 +115,9 @@ class DeepEnsembles(LightningModule):
     def load_checkpoint(cls, path, n_ensemble=None):
         model = cls()
         states = torch.load(path)
-        return [deepcopy(model.load_state_dict(s)).eval() for s in states]
+        model = [deepcopy(model).load_state_dict(s) for s in states]
+        model = [m.eval() for m in model]
+        return model
 
 
 class MixLayerEnsembles(DeepEnsembles):
@@ -149,7 +151,9 @@ class MixLayerEnsembles(DeepEnsembles):
     def load_checkpoint(cls, path, n_ensemble=None):
         model = cls(n_ensemble)
         state = torch.load(path)
-        return (model.load_state_dict(state)).eval()
+        model.load_state_dict(state)
+        model.eval()
+        return model
 
 
 class MixBlockEnsembles(MixLayerEnsembles):
@@ -189,7 +193,9 @@ class DeepMixLayerEnsembles(MixLayerEnsembles):
     def load_checkpoint(cls, path, n_ensemble=None):
         model = cls(n_ensemble)
         states = torch.load(path)
-        return [deepcopy(model.load_state_dict(s)).eval() for s in states]
+        model = [deepcopy(model).load_state_dict(s) for s in states]
+        model = [m.eval() for m in model]
+        return model
 
 
 def get_model(model_name):

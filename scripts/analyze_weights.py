@@ -7,12 +7,8 @@ import numpy as np
 import torch
 from torch import nn
 
-from scr.classification_models import (
-    DeepEnsembles,
-    MixBlockEnsembles,
-    MixLayerEnsembles,
-)
 from scr.data import get_dataset
+from scr.classification_models import get_classification_model_from_file
 from scr.layers import EnsampleLayer
 from scr.utils import cosine_sim, disagreeement_score, rgetattr, rsetattr
 
@@ -36,10 +32,10 @@ if __name__ == "__main__":
     parser.add_argument("--test_data", default=None)
     args = parser.parse_args()
 
-    with open(args.weight_file, "rb") as file:
-        model = pkl.load(file)
+    model = get_classification_model_from_file(args.weight_file)
 
     if args.test_data is not None:
+        # Downsample for speeding up things
         _, _, test_data = get_dataset(args.test_data)
         test_data = torch.utils.data.Subset(
             test_data, list(np.random.permutation(1000))
