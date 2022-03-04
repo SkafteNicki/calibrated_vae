@@ -31,7 +31,7 @@ class DeepEnsembles(LightningModule):
                 ),
                 callbacks.RichProgressBar(leave=True),
             ],
-            "min_epochs": 20,
+            "min_epochs": 40,
         }
         return config
 
@@ -71,7 +71,7 @@ class DeepEnsembles(LightningModule):
         self.log("val_acc", self.val_acc, on_epoch=True, prog_bar=True)
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=1e-2)
+        return torch.optim.Adam(self.parameters(), lr=1e-3)
 
     @staticmethod
     def get_predictions(model, x):
@@ -210,6 +210,14 @@ class DeepMixLayerEnsembles(MixLayerEnsembles):
         return models
 
 
+class DeepMixBlockEnsembles(DeepMixLayerEnsembles):
+    level = "block"
+
+
+class DeepMixConvEnsembles(DeepMixLayerEnsembles):
+    level = "conv"
+
+
 def get_model(model_name):
     return {
         "DeepEnsembles": DeepEnsembles,
@@ -217,12 +225,19 @@ def get_model(model_name):
         "MixBlockEnsembles": MixBlockEnsembles,
         "MixConvEnsembles": MixConvEnsembles,
         "DeepMixLayerEnsembles": DeepMixLayerEnsembles,
+        "DeepMixBlockEnsembles": DeepMixBlockEnsembles,
+        "DeepMixConvEnsembles": DeepMixConvEnsembles,
     }[model_name]
 
 
 def get_classification_model_from_file(path):
+
     if "DeepMixLayer" in path:
         model_class = DeepMixLayerEnsembles
+    elif "DeepMixBlock" in path:
+        model_class = DeepMixBlockEnsembles
+    elif "DeepMixConv" in path:
+        model_class = DeepMixConvEnsembles
     elif "MixLayer" in path:
         model_class = MixLayerEnsembles
     elif "MixBlock" in path:

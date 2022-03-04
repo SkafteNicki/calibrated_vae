@@ -34,6 +34,10 @@ def disagreeement_score(m1, m2, x):
     return (pred1 != pred2).float().mean()
 
 
+def disagreement_score_from_preds(p1, p2):
+    return (p1.argmax(dim=-1) != p2.argmax(dim=-1)).float().mean()
+
+
 def rsetattr(obj, attr, val):
     pre, _, post = attr.rpartition(".")
     return setattr(rgetattr(obj, pre) if pre else obj, post, val)

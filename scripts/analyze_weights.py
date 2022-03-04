@@ -1,16 +1,19 @@
 import argparse
-import pickle as pkl
 from copy import deepcopy
 from itertools import product
+import os
 
 import numpy as np
 import torch
 from torch import nn
+import matplotlib.pyplot as plt
+from sklearn.manifold import TSNE
+import tqdm
 
 from scr.data import get_dataset
 from scr.classification_models import get_classification_model_from_file
 from scr.layers import EnsampleLayer
-from scr.utils import cosine_sim, disagreeement_score, rgetattr, rsetattr
+from scr.utils import cosine_sim, disagreement_score_from_preds, rgetattr, rsetattr
 
 
 def get_all_combinations(n_ensemble_size, n_ensemble_layers):
@@ -29,81 +32,27 @@ def get_all_combinations(n_ensemble_size, n_ensemble_layers):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("weight_file")
-    parser.add_argument("--test_data", default=None)
+    parser.add_argument("test_data")
     args = parser.parse_args()
 
     model = get_classification_model_from_file(args.weight_file)
 
-    if args.test_data is not None:
-        # Downsample for speeding up things
-        _, _, test_data = get_dataset(args.test_data)
-        test_data = torch.utils.data.Subset(
-            test_data, list(np.random.permutation(1000))
-        )
-        test = torch.utils.data.DataLoader(test_data, batch_size=10)
+    n_samples = 1000
+    batch_size = 20
+    n_batches = int(n_samples / batch_size)
+    # Downsample for speeding up things
+    _, _, test_data = get_dataset(args.test_data)
+    test_data = torch.utils.data.Subset(
+        test_data, list(np.random.permutation(n_samples))
+    )
+    test = torch.utils.data.DataLoader(test_data, batch_size=batch_size)
 
-    # deep ensemble
     if isinstance(model, list):
         n = len(model)
-        sim = np.ones((n, n))
-        dis = np.zeros((n, n))
-        for i in range(n):
-            for j in range(i, n):
-                print(f"Comparing ensemble {i} and {j}")
-                if i == j:
-                    continue
 
-                weight1 = np.concatenate(
-                    [w.detach().flatten().numpy() for w in model[i].parameters()]
-                )
-                weight2 = np.concatenate(
-                    [w.detach().flatten().numpy() for w in model[j].parameters()]
-                )
-                sim[i, j] = cosine_sim(weight1, weight2)
-                if args.test_data is not None:
-                    for batch in test:
-                        with torch.no_grad():
-                            dis[i, j] += disagreeement_score(
-                                model[i], model[j], batch[0]
-                            )
-                    dis[i, j] /= len(test)
+        def get_model_instance(index):
+            return deepcopy(model[index])
 
-                sim[j, i] = sim[i, j]
-                dis[j, i] = sim[i, j]
-
-        if args.test_data is not None:
-            n_batches = 50
-            embeddings = []
-            for m in model:
-                temp = deepcopy(m)
-                temp.base.fc = nn.Identity()
-                with torch.no_grad():
-                    for i, batch in enumerate(
-                        torch.utils.data.DataLoader(test_data, batch_size=10)
-                    ):
-                        if i == n_batches:
-                            break
-                        embeddings.append(temp(batch[0]).reshape(-1))
-            from sklearn.manifold import TSNE
-
-            embeddings = torch.stack(embeddings).detach().numpy()
-
-            tsne = TSNE(n_components=2)
-            tsne_embeddings = tsne.fit_transform(embeddings)
-
-            import matplotlib.pyplot as plt
-
-            plt.figure()
-            for i in range(len(model)):
-                plt.plot(
-                    tsne_embeddings[n_batches * i : n_batches * (i + 1), 0],
-                    tsne_embeddings[n_batches * i : n_batches * (i + 1), 1],
-                    ".",
-                    label=f"model_{i}",
-                )
-            plt.legend()
-
-    # mix ensemble
     else:
         n_ensemble_layers = len(
             [m for m in model.modules() if isinstance(m, EnsampleLayer)]
@@ -112,44 +61,96 @@ if __name__ == "__main__":
             [m for m in model.modules() if isinstance(m, EnsampleLayer)][0]
         )
         n = n_ensemble_size ** n_ensemble_layers
-        sim = np.ones((n, n))
-        dis = np.zeros((n, n))
         combinations = get_all_combinations(n_ensemble_size, n_ensemble_layers)
-        for i, comb1 in enumerate(combinations):
-            for j, comb2 in enumerate(combinations):
-                print(f"Comparing ensemble {i} and {j}")
-                if i == j:
-                    sim[i, j] = 1.0
-                    continue
-                if sim[j, i] != 1.0:
-                    sim[i, j] = sim[j, i]
-                    continue
 
-                temp1 = deepcopy(model)
-                temp2 = deepcopy(model)
-                idx = 0
-                for m in temp1.named_modules():
-                    if isinstance(m[1], EnsampleLayer):
-                        rsetattr(temp1, m[0], rgetattr(temp1, m[0])[comb1[idx]])
-                        idx += 1
-                idx = 0
-                for m in temp2.named_modules():
-                    if isinstance(m[1], EnsampleLayer):
-                        rsetattr(temp2, m[0], rgetattr(temp2, m[0])[comb2[idx]])
-                        idx += 1
+        def get_model_instance(index):
+            comb = combinations[index]
+            temp = deepcopy(model)
+            idx = 0
+            for name, module in temp.named_modules():
+                if isinstance(module, EnsampleLayer):
+                    rsetattr(temp, name, rgetattr(temp, name)[comb[idx]])
+                    idx += 1
+            return temp
 
-                weight1 = np.concatenate(
-                    [w.detach().flatten().numpy() for w in temp1.parameters()]
-                )
-                weight2 = np.concatenate(
-                    [w.detach().flatten().numpy() for w in temp2.parameters()]
-                )
-                sim[i, j] = cosine_sim(weight1, weight2)
+    sim = np.ones((n, n))
+    dis = np.zeros((n, n))
 
-                if args.test_data is not None:
-                    for batch in test:
-                        with torch.no_grad():
-                            dis[i, j] += disagreeement_score(temp1, temp2, batch[0])
-                    dis[i, j] /= len(test)
+    preds = torch.zeros(n, n_samples, 10)
+    embeddings = torch.zeros(n, n_batches, 512 * batch_size)
+    for i in tqdm.tqdm(range(n), total=n, desc="Extracting predictions and embeddings"):
+        m = get_model_instance(i)
+        with torch.no_grad():
+            for j, batch in enumerate(test):
+                preds[i, batch_size * j : batch_size * (j + 1)] = m(batch[0])
 
-                del temp1, temp2, weight1, weight2
+        m.base.fc = nn.Identity()
+        with torch.no_grad():
+            for j, batch in enumerate(test):
+                embeddings[i, j] = m(batch[0]).reshape(-1)
+
+    for i in range(n):
+        for j in range(i, n):
+            print(f"Comparing ensemble {i} and {j}")
+            if i == j:
+                continue
+
+            m1 = get_model_instance(i)
+            m2 = get_model_instance(j)
+
+            weight1 = np.concatenate(
+                [w.detach().flatten().numpy() for w in m1.parameters()]
+            )
+            weight2 = np.concatenate(
+                [w.detach().flatten().numpy() for w in m2.parameters()]
+            )
+
+            sim[i, j] = cosine_sim(weight1, weight2)
+            dis[i, j] = disagreement_score_from_preds(preds[i], preds[j])
+
+            sim[j, i] = sim[i, j]
+            dis[j, i] = dis[i, j]
+
+    tsne = TSNE(n_components=2)
+    tsne_embeddings = tsne.fit_transform(
+        embeddings.reshape(-1, 512 * batch_size).numpy()
+    )
+
+    os.makedirs("figures/analyze_weight_space/", exist_ok=True)
+    save_name = args.weight_file[:-3].split("/")[-1]
+
+    fig = plt.figure()
+    plt.imshow(sim)
+    plt.colorbar()
+    fig.savefig(
+        f"figures/analyze_weight_space/{save_name}_sim.png", bbox_inches="tight"
+    )
+    fig.savefig(
+        f"figures/analyze_weight_space/{save_name}_sim.svg", bbox_inches="tight"
+    )
+
+    fig = plt.figure()
+    plt.imshow(dis)
+    plt.colorbar()
+    fig.savefig(
+        f"figures/analyze_weight_space/{save_name}_dis.png", bbox_inches="tight"
+    )
+    fig.savefig(
+        f"figures/analyze_weight_space/{save_name}_dis.svg", bbox_inches="tight"
+    )
+
+    fig = plt.figure()
+    for i in range(10):
+        plt.plot(
+            tsne_embeddings[n_batches * i : n_batches * (i + 1), 0],
+            tsne_embeddings[n_batches * i : n_batches * (i + 1), 1],
+            ".",
+            label=f"model_{i}",
+        )
+    plt.legend()
+    fig.savefig(
+        f"figures/analyze_weight_space/{save_name}_tsne.png", bbox_inches="tight"
+    )
+    fig.savefig(
+        f"figures/analyze_weight_space/{save_name}_tsne.svg", bbox_inches="tight"
+    )

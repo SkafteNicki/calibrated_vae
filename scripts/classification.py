@@ -15,9 +15,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-m",
-        "--models", 
+        "--models",
         nargs="+",
-        default=["DeepEnsembles", "MixLayerEnsembles", "MixBlockEnsembles", "DeepMixLayerEnsembles"],
+        default=[
+            "DeepEnsembles",
+            "MixLayerEnsembles",
+            "MixBlockEnsembles",
+            "MixConvEnsembles",
+            "DeepMixLayerEnsembles",
+            "DeepMixBlockEnsembles",
+            "DeepMixConvEnsembles",
+        ],
     )
     parser.add_argument(
         "-d",
@@ -26,14 +34,10 @@ if __name__ == "__main__":
         default=["cifar10", "mnist", "fmnist", "svhn"],
     )
     parser.add_argument(
-        "-e",
-        "--ensemble",
-        nargs="+",
-        default=[1, 2, 3, 4, 5, 8, 10],
-        type=int
+        "-e", "--ensemble", nargs="+", default=[1, 2, 3, 4, 5, 8, 10], type=int
     )
     args = parser.parse_args()
-    
+
     print(
         "*************************************************** \n"
         "Running script with args: \n"
@@ -81,7 +85,10 @@ if __name__ == "__main__":
                         wandb.finish()
 
                     os.makedirs("models/classification_models/", exist_ok=True)
-                    model_class.save_checkpoint(model, f"models/classification_models/{dataset_name}_{model_name}_{n_ensemble}.pt")
+                    model_class.save_checkpoint(
+                        model,
+                        f"models/classification_models/{dataset_name}_{model_name}_{n_ensemble}.pt",
+                    )
 
                     inference_start = time.time()
                     acc, nll, brier = model_class.ensample_predict(

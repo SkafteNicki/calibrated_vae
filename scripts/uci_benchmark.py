@@ -43,7 +43,7 @@ if __name__ == "__main__":
         type=int,
     )
     args = parser.parse_args()
-    
+
     os.makedirs("results/", exist_ok=True)
     with open("results/uci_benchmark_scores.txt", "w") as file:
         file.write("dataset, model_class, n_ensemble, train_time, rmse, ll \n")
