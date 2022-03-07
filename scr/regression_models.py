@@ -2,7 +2,6 @@ from functools import partial
 
 import torch
 from torch import nn
-from pytorch_lightning import Tra
 
 from scr.layers import EnsampleLayer
 
