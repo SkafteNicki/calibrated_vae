@@ -37,10 +37,7 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
-        "-e",
-        "--ensemble",
-        default=5,
-        type=int,
+        "-e", "--ensemble", nargs="+", default=[2, 5, 10], type=int
     )
     args = parser.parse_args()
 
