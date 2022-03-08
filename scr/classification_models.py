@@ -187,8 +187,7 @@ class DeepMixLayerEnsembles(MixLayerEnsembles):
             trainer.fit(
                 model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
             )
-            if "ENABLE_LOGGING" in os.environ:
-                wandb.config.update(**config)
+            cls.update_logger_config(config)
             model.eval()
             models.append(deepcopy(model))
         return models

@@ -16,6 +16,13 @@ from scr.layers import EnsampleLayer
 from scr.utils import cosine_sim, disagreement_score_from_preds, rgetattr, rsetattr
 
 
+def dis_where_wrong(pred1, pred2, target):
+    p1 = pred1.argmax(dim=-1)
+    p2 = pred2.argmax(dim=-1)
+    mask = torch.logical_and(p1 != target, p2 != target)
+    return (p1 != p2)[mask].float().mean()
+
+
 def get_all_combinations(n_ensemble_size, n_ensemble_layers):
     list1 = list(range(0, n_ensemble_size))
     list2 = list(range(0, n_ensemble_size))
@@ -46,6 +53,7 @@ if __name__ == "__main__":
         test_data, list(np.random.permutation(n_samples))
     )
     test = torch.utils.data.DataLoader(test_data, batch_size=batch_size)
+    targets = torch.cat([batch[1] for batch in test])
 
     if isinstance(model, list):
         n = len(model)
@@ -75,6 +83,7 @@ if __name__ == "__main__":
 
     sim = np.ones((n, n))
     dis = np.zeros((n, n))
+    dis2 = np.zeros((n, n))
 
     preds = torch.zeros(n, n_samples, 10)
     embeddings = torch.zeros(n, n_batches, 512 * batch_size)
@@ -107,9 +116,11 @@ if __name__ == "__main__":
 
             sim[i, j] = cosine_sim(weight1, weight2)
             dis[i, j] = disagreement_score_from_preds(preds[i], preds[j])
+            dis2[i, j] = dis_where_wrong(preds[i], preds[j], targets)
 
             sim[j, i] = sim[i, j]
             dis[j, i] = dis[i, j]
+            dis2[j, i] = dis2[i, j]
 
     tsne = TSNE(n_components=2)
     tsne_embeddings = tsne.fit_transform(
@@ -140,7 +151,18 @@ if __name__ == "__main__":
     )
 
     fig = plt.figure()
-    for i in range(10):
+    plt.imshow(dis2)
+    plt.colorbar()
+        fig.savefig(
+        f"figures/analyze_weight_space/{save_name}_dis2.png", bbox_inches="tight"
+    )
+    fig.savefig(
+        f"figures/analyze_weight_space/{save_name}_dis2.svg", bbox_inches="tight"
+    )
+
+
+    fig = plt.figure()
+    for i in range(n):
         plt.plot(
             tsne_embeddings[n_batches * i : n_batches * (i + 1), 0],
             tsne_embeddings[n_batches * i : n_batches * (i + 1), 1],
