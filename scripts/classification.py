@@ -8,6 +8,7 @@ from pytorch_lightning.utilities.seed import seed_everything
 
 from scr.classification_models import get_model
 from scr.data import get_dataset
+from scr.notify import post_message
 
 if __name__ == "__main__":
     seed_everything(42)
@@ -105,4 +106,10 @@ if __name__ == "__main__":
 
                 except Exception as e:
                     print(f"Exception happened: {e}")
+                    post_message(
+                        "For combination: \n"
+                        f"Dataset={dataset_name}, Model={model_name}, n_ensemble={n_ensemble} \n"
+                        "the following exception happended: \n"
+                        f"{e}"
+                    )
                     continue
