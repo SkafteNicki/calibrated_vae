@@ -46,6 +46,8 @@ class AddBound(nn.Module):
 
 
 def create_mixensamble(module, n_ensemble, level="block"):
+    if level == "split":
+        attr_list = ["base", "fc"]
     if level == "block":
         attr_list = [
             "base.layer1.0",

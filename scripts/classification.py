@@ -23,6 +23,7 @@ if __name__ == "__main__":
             "MixLayerEnsembles",
             "MixBlockEnsembles",
             "MixConvEnsembles",
+            "MixSplitEnsembles",
             "DeepMixLayerEnsembles",
             "DeepMixBlockEnsembles",
             "DeepMixConvEnsembles",

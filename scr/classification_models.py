@@ -47,7 +47,6 @@ class DeepEnsembles(LightningModule):
         self.base = torchvision.models.resnet18(pretrained=False)
         self.base.fc = nn.Linear(512, 10)
         self.loss_fn = nn.CrossEntropyLoss()
-
         self.val_acc = Accuracy(num_classes=10)
 
     def forward(self, x):
@@ -69,6 +68,7 @@ class DeepEnsembles(LightningModule):
         self.val_acc.update(preds, y)
         self.log("val_loss", val_loss, on_epoch=True, prog_bar=True)
         self.log("val_acc", self.val_acc, on_epoch=True, prog_bar=True)
+        self.log("val_brier", brierscore(preds.softmax(dim=-1), y), on_epoch=True, prog_bar=True)
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=1e-3)
@@ -168,6 +168,22 @@ class MixConvEnsembles(MixLayerEnsembles):
     level = "conv"
 
 
+class MixSplitEnsembles(MixLayerEnsembles):
+    level = "split"
+
+    def __init__(self, n_ensemble):
+        super().__init__()
+        self.base = torchvision.models.resnet18(pretrained=False)
+        self.base.fc = nn.Identity()
+        self.fc = nn.Linear(512, 10)
+        create_mixensamble(self, n_ensemble, level=self.level)
+        self.loss_fn = nn.CrossEntropyLoss()
+        self.val_acc = Accuracy(num_classes=10)
+
+    def forward(self, x):
+        return self.fc(self.base(x))
+
+
 class DeepMixLayerEnsembles(MixLayerEnsembles):
     @staticmethod
     def get_predictions(model, x):
@@ -217,19 +233,20 @@ class DeepMixConvEnsembles(DeepMixLayerEnsembles):
     level = "conv"
 
 
-def get_model(model_name):
+def get_model(model_name: str):
     return {
         "DeepEnsembles": DeepEnsembles,
         "MixLayerEnsembles": MixLayerEnsembles,
         "MixBlockEnsembles": MixBlockEnsembles,
         "MixConvEnsembles": MixConvEnsembles,
+        "MixSplitEnsembles": MixSplitEnsembles,
         "DeepMixLayerEnsembles": DeepMixLayerEnsembles,
         "DeepMixBlockEnsembles": DeepMixBlockEnsembles,
         "DeepMixConvEnsembles": DeepMixConvEnsembles,
     }[model_name]
 
 
-def get_classification_model_from_file(path):
+def get_classification_model_from_file(path: str):
 
     if "DeepMixLayer" in path:
         model_class = DeepMixLayerEnsembles
@@ -243,6 +260,8 @@ def get_classification_model_from_file(path):
         model_class = MixBlockEnsembles
     elif "MixConv" in path:
         model_class = MixConvEnsembles
+    elif "MixSplit" in path:
+        model_class = MixSplitEnsembles
     elif "DeepEnsemble" in path:
         model_class = DeepEnsembles
 

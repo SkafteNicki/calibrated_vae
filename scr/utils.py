@@ -1,4 +1,5 @@
 import functools
+from itertools import product
 
 import torch
 import torch.distributions as D
@@ -48,3 +49,16 @@ def rgetattr(obj, attr, *args):
         return getattr(obj, attr, *args)
 
     return functools.reduce(_getattr, [obj] + attr.split("."))
+
+
+def get_all_combinations(n_ensemble_size, n_ensemble_layers):
+    list1 = list(range(0, n_ensemble_size))
+    list2 = list(range(0, n_ensemble_size))
+    for i in range(n_ensemble_layers - 1):
+        all_combinations = list(product(list1, list2))
+        if i != 0:
+            all_combinations = [
+                (*element[0], element[1]) for element in all_combinations
+            ]
+        list1 = all_combinations
+    return all_combinations
