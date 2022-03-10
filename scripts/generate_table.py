@@ -13,12 +13,12 @@ with open('results/uci_benchmark_scores.txt', 'r') as file:
         
         time = out[3:23]; time[0] = time[0][1:]; time[-1] = time[-1][:-1]
         rmse = out[24:43]; rmse[0] = rmse[0][1:]; rmse[-1] = rmse[-1][:-1]
-        nll = out[43:]; nll[0] = nll[0][1:]; nll[-1] = nll[-1][:-1]
+        nll = out[43:]; nll[0] = nll[0][1:]; nll[-1] = nll[-1][:-3]
 
         data[dataset][model] = {
             'time': [float(x) for x in time],
-            'rmse': [float(x) for x in time],
-            'nll': [float(x) for x in time],
+            'rmse': [float(x) for x in rmse],
+            'nll': [float(x) for x in nll],
         }
 
 t = PrettyTable(['Dataset', 'Model', 'Time Mean', 'Time Std', 'Rmse Mean', 'Rmse Std', 'NLL Mean', 'NLL Std'])

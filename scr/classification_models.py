@@ -31,7 +31,7 @@ class DeepEnsembles(LightningModule):
                 ),
                 callbacks.RichProgressBar(leave=True),
             ],
-            "min_epochs": 40,
+            "min_epochs": 60,
         }
         return config
 
@@ -172,7 +172,6 @@ class MixSplitEnsembles(MixLayerEnsembles):
     level = "split"
 
     def __init__(self, n_ensemble):
-        super().__init__()
         self.base = torchvision.models.resnet18(pretrained=False)
         self.base.fc = nn.Identity()
         self.fc = nn.Linear(512, 10)
