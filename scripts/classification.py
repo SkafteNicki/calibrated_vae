@@ -115,3 +115,5 @@ if __name__ == "__main__":
                         "the following exception happended: \n"
                         f"{traceback.format_exc()}"
                     )
+
+    post_message("classification.py finished")
