@@ -1,6 +1,7 @@
 import argparse
 import os
 import time
+import traceback
 
 import torch
 import wandb
@@ -106,11 +107,11 @@ if __name__ == "__main__":
                         )
 
                 except Exception as e:
-                    print(f"Exception happened: {e}")
+                    print(f"Exception happened:")
+                    traceback.print_exc()
                     post_message(
                         "For combination: \n"
                         f"Dataset={dataset_name}, Model={model_name}, n_ensemble={n_ensemble} \n"
                         "the following exception happended: \n"
-                        f"{e}"
+                        f"{traceback.format_exc()}"
                     )
-                    continue
