@@ -169,15 +169,12 @@ class MixConvEnsembles(MixLayerEnsembles):
 
 
 class MixSplitEnsembles(MixLayerEnsembles):
-    level = "split"
-
     def __init__(self, n_ensemble):
+        super().__init__(n_ensemble)
         self.base = torchvision.models.resnet18(pretrained=False)
         self.base.fc = nn.Identity()
         self.fc = nn.Linear(512, 10)
-        create_mixensamble(self, n_ensemble, level=self.level)
-        self.loss_fn = nn.CrossEntropyLoss()
-        self.val_acc = Accuracy(num_classes=10)
+        create_mixensamble(self, n_ensemble, level="split")
 
     def forward(self, x):
         return self.fc(self.base(x))
