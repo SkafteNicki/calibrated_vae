@@ -1,7 +1,8 @@
 import argparse
 from copy import deepcopy
-from itertools import product
+
 import os
+import pickle
 
 import numpy as np
 import torch
@@ -13,7 +14,7 @@ import tqdm
 from scr.data import get_dataset
 from scr.classification_models import get_classification_model_from_file
 from scr.layers import EnsampleLayer
-from scr.utils import cosine_sim, disagreement_score_from_preds, rgetattr, rsetattr
+from scr.utils import cosine_sim, disagreement_score_from_preds, rgetattr, rsetattr, get_all_combinations
 
 
 def dis_where_wrong(pred1, pred2, target):
@@ -23,24 +24,12 @@ def dis_where_wrong(pred1, pred2, target):
     return (p1 != p2)[mask].float().mean()
 
 
-def get_all_combinations(n_ensemble_size, n_ensemble_layers):
-    list1 = list(range(0, n_ensemble_size))
-    list2 = list(range(0, n_ensemble_size))
-    for i in range(n_ensemble_layers - 1):
-        all_combinations = list(product(list1, list2))
-        if i != 0:
-            all_combinations = [
-                (*element[0], element[1]) for element in all_combinations
-            ]
-        list1 = all_combinations
-    return all_combinations
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("weight_file")
     parser.add_argument("test_data")
     args = parser.parse_args()
+    save_name = args.weight_file[:-3].split("/")[-1]
 
     model = get_classification_model_from_file(args.weight_file)
 
@@ -98,6 +87,12 @@ if __name__ == "__main__":
             for j, batch in enumerate(test):
                 embeddings[i, j] = m(batch[0]).reshape(-1)
 
+    os.makedirs("results/analyze_weight_space", exist_ok=True)
+    with open(f"results/analyze_weight_space/{save_name}_preds.pkl", "wb") as file:
+        pickle.dump(preds, file)
+    with open(f"results/analyze_weight_space/{save_name}_embeddings.pkl", "wb") as file:
+        pickle.dump(embeddings.reshape(n, n_batches, batch_size, 512).reshape(n, -1, 512), file)
+
     for i in range(n):
         for j in range(i, n):
             print(f"Comparing ensemble {i} and {j}")
@@ -122,13 +117,15 @@ if __name__ == "__main__":
             dis[j, i] = dis[i, j]
             dis2[j, i] = dis2[i, j]
 
+    with open(f"results/analyze_weight_space/{save_name}_results.pkl", "wb") as file:
+        pickle.dump([sim, dis, dis2], file)
+
     tsne = TSNE(n_components=2)
     tsne_embeddings = tsne.fit_transform(
         embeddings.reshape(-1, 512 * batch_size).numpy()
     )
 
     os.makedirs("figures/analyze_weight_space/", exist_ok=True)
-    save_name = args.weight_file[:-3].split("/")[-1]
 
     fig = plt.figure()
     plt.imshow(sim)
@@ -153,7 +150,7 @@ if __name__ == "__main__":
     fig = plt.figure()
     plt.imshow(dis2)
     plt.colorbar()
-        fig.savefig(
+    fig.savefig(
         f"figures/analyze_weight_space/{save_name}_dis2.png", bbox_inches="tight"
     )
     fig.savefig(
