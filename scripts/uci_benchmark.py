@@ -11,6 +11,7 @@ from torch import nn, tensor
 from torch.utils.data import DataLoader, TensorDataset
 
 from scr.regression_models import Ensamble, EnsambleNLL, MixEnsemble, MixEnsembleNLL
+from scr.notify import post_message
 from scr.utils import ll, rmse
 
 SEED = 42
@@ -128,3 +129,5 @@ if __name__ == "__main__":
                     f"NLL : {np.mean(scores['nll'])}+-{np.std(scores['nll'])} \n"
                     f"Time: {np.mean(scores['time'])}+-{np.std(scores['time'])} \n"
                 )
+
+    post_message("uci_benchmark.py finished")
