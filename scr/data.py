@@ -4,6 +4,16 @@ import torch
 from torch.utils.data import Dataset
 from torchvision import datasets, transforms
 
+aa1_to_index = {'A': 0, 'C': 1, 'D': 2, 'E': 3, 'F': 4, 'G': 5, 'H': 6,
+                'I': 7, 'K': 8, 'L': 9, 'M': 10, 'N': 11, 'P': 12,
+                'Q': 13, 'R': 14, 'S': 15, 'T': 16, 'V': 17, 'W': 18,
+                'Y': 19, 'X':20, 'Z': 21, '-': 22, '.': 22}
+important_organisms = {
+    'Acidobacteria': 0, 'Actinobacteria': 1, 'Bacteroidetes': 2,
+    'Chloroflexi': 3, 'Cyanobacteria': 4, 'Deinococcus-Thermus': 5,
+    'Firmicutes': 6, 'Fusobacteria': 7, 'Proteobacteria': 8
+}
+
 def rgb_transform(dataset: Dataset) -> Dataset:
     data = torch.tensor(dataset.data) / 255.0
     if hasattr(dataset, 'targets'):
