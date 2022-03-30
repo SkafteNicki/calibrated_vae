@@ -65,7 +65,7 @@ if __name__ == "__main__":
         for model_name in args.models:
             model_class = get_model(model_name)
             for rep in range(args.num_reps):
-                train, val, test = get_dataset(dataset_name)
+                train, val, test, n_labels = get_dataset(dataset_name)
                 train_dataloader = torch.utils.data.DataLoader(train, batch_size=64)
                 val_dataloader = torch.utils.data.DataLoader(val, batch_size=64)
                 test_dataloader = torch.utils.data.DataLoader(test, batch_size=64)
@@ -80,7 +80,7 @@ if __name__ == "__main__":
                     try:
                         train_start = time.time()
                         model = model_class.fit(
-                            n_ensemble, train_dataloader, val_dataloader
+                            n_labels, n_ensemble, train_dataloader, val_dataloader
                         )
                         train_end = time.time()
                         if "ENABLE_LOGGING" in os.environ:

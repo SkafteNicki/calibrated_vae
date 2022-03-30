@@ -31,7 +31,7 @@ class DeepEnsembles(LightningModule):
                 ),
                 callbacks.RichProgressBar(leave=True),
             ],
-            "min_epochs": 60,
+            "min_epochs": 100,
         }
         return config
 
@@ -42,12 +42,13 @@ class DeepEnsembles(LightningModule):
             config.pop("callbacks")
             wandb.config.update(config)
 
-    def __init__(self):
+    def __init__(self, n_labels):
         super().__init__()
+        self.n_labels = n_labels
         self.base = torchvision.models.resnet18(pretrained=False)
-        self.base.fc = nn.Linear(512, 10)
+        self.base.fc = nn.Linear(512, n_labels)
         self.loss_fn = nn.CrossEntropyLoss()
-        self.val_acc = Accuracy(num_classes=10)
+        self.val_acc = Accuracy(num_classes=n_labels)
 
     def forward(self, x):
         return self.base(x)
@@ -56,7 +57,7 @@ class DeepEnsembles(LightningModule):
         x, y = batch
         preds = self(x)
         loss = self.loss_fn(preds, y)
-        acc = accuracy(preds, y, num_classes=10)
+        acc = accuracy(preds, y, num_classes=self.n_labels)
         self.log("loss", loss)
         self.log("acc", acc, prog_bar=True)
         return loss
@@ -78,10 +79,10 @@ class DeepEnsembles(LightningModule):
         return torch.stack([m(x) for m in model]).mean(dim=0)
 
     @classmethod
-    def fit(cls, n_ensemble, train_dataloader, val_dataloader=None):
+    def fit(cls, n_labels, n_ensemble, train_dataloader, val_dataloader=None):
         models = []
         for _ in range(n_ensemble):
-            model = cls()
+            model = cls(n_labels)
             config = cls.trainer_config
             trainer = Trainer(**config)
             trainer.fit(
@@ -99,7 +100,7 @@ class DeepEnsembles(LightningModule):
             for batch in tqdm(test_dataloader, desc="Evaluating test set"):
                 x, y = batch
                 pred = cls.get_predictions(model, x)
-                acc += accuracy(pred, y, num_classes=10).item()
+                acc += accuracy(pred, y).item()
                 nll += torch.nn.functional.nll_loss(pred, y).item()
                 brier += brierscore(pred.softmax(dim=-1), y).item()
             acc = acc / len(test_dataloader)
@@ -112,8 +113,8 @@ class DeepEnsembles(LightningModule):
         torch.save([m.state_dict() for m in model], path)
 
     @classmethod
-    def load_checkpoint(cls, path, n_ensemble=None):
-        model = cls()
+    def load_checkpoint(cls, path, n_labels, n_ensemble=None):
+        model = cls(n_labels)
         states = torch.load(path)
         models = []
         for s in states:
@@ -127,8 +128,8 @@ class DeepEnsembles(LightningModule):
 class MixLayerEnsembles(DeepEnsembles):
     level = "layer"
 
-    def __init__(self, n_ensemble):
-        super().__init__()
+    def __init__(self, n_labels, n_ensemble):
+        super().__init__(n_labels)
         create_mixensamble(self, n_ensemble, level=self.level)
 
     @staticmethod
@@ -136,8 +137,8 @@ class MixLayerEnsembles(DeepEnsembles):
         return torch.stack([model(x) for _ in range(25)]).mean(dim=0)
 
     @classmethod
-    def fit(cls, n_ensemble, train_dataloader, val_dataloader=None):
-        model = cls(n_ensemble)
+    def fit(cls, n_labels, n_ensemble, train_dataloader, val_dataloader=None):
+        model = cls(n_labels, n_ensemble)
         config = cls.trainer_config
         trainer = Trainer(**config)
         trainer.fit(
@@ -152,8 +153,8 @@ class MixLayerEnsembles(DeepEnsembles):
         torch.save(model.state_dict(), path)
 
     @classmethod
-    def load_checkpoint(cls, path, n_ensemble=None):
-        model = cls(n_ensemble)
+    def load_checkpoint(cls, path, n_labels, n_ensemble=None):
+        model = cls(n_labels, n_ensemble)
         state = torch.load(path)
         model.load_state_dict(state)
         model.eval()
@@ -169,11 +170,11 @@ class MixConvEnsembles(MixLayerEnsembles):
 
 
 class MixSplitEnsembles(MixLayerEnsembles):
-    def __init__(self, n_ensemble):
-        super().__init__(n_ensemble)
+    def __init__(self, n_labels, n_ensemble):
+        super().__init__(n_labels, n_ensemble)
         self.base = torchvision.models.resnet18(pretrained=False)
         self.base.fc = nn.Identity()
-        self.fc = nn.Linear(512, 10)
+        self.fc = nn.Linear(512, n_labels)
         create_mixensamble(self, n_ensemble, level="split")
 
     def forward(self, x):
@@ -209,8 +210,8 @@ class DeepMixLayerEnsembles(MixLayerEnsembles):
         torch.save([m.state_dict() for m in model], path)
 
     @classmethod
-    def load_checkpoint(cls, path, n_ensemble=None):
-        model = cls(n_ensemble)
+    def load_checkpoint(cls, path, n_labels, n_ensemble=None):
+        model = cls(n_labels, n_ensemble)
         states = torch.load(path)
         models = []
         for s in states:
@@ -242,7 +243,7 @@ def get_model(model_name: str):
     }[model_name]
 
 
-def get_classification_model_from_file(path: str):
+def get_classification_model_from_file(path: str, n_labels: int):
 
     if "DeepMixLayer" in path:
         model_class = DeepMixLayerEnsembles
@@ -262,4 +263,4 @@ def get_classification_model_from_file(path: str):
         model_class = DeepEnsembles
 
     n_ensemble = int(path[:-3].split("_")[-1])
-    return model_class.load_checkpoint(path, n_ensemble)
+    return model_class.load_checkpoint(path, n_labels, n_ensemble)

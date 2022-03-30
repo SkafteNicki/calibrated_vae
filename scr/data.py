@@ -1,7 +1,10 @@
+from typing import Tuple
+
 import torch
+from torch.utils.data import Dataset
 from torchvision import datasets, transforms
 
-def rgb_transform(dataset):
+def rgb_transform(dataset: Dataset) -> Dataset:
     data = torch.tensor(dataset.data) / 255.0
     if hasattr(dataset, 'targets'):
         targets = torch.tensor(dataset.targets)
@@ -11,13 +14,14 @@ def rgb_transform(dataset):
     return torch.utils.data.TensorDataset(data, targets)
 
 
-def gray_transform(dataset):
+def gray_transform(dataset: Dataset) -> Dataset:
     data = torch.tensor(dataset.data[:,None].repeat(1,3,1,1)) / 255.0
     targets = torch.tensor(dataset.targets)
     return torch.utils.data.TensorDataset(data, targets)
 
 
-def get_dataset(dataset_name):
+def get_dataset(dataset_name: str) -> Tuple[Dataset, Dataset, Dataset, int]:
+    n_labels = 10
     if dataset_name == "svhn":
         train = datasets.SVHN(
             root=f"data/{dataset_name}/",
@@ -44,6 +48,20 @@ def get_dataset(dataset_name):
         )
         train = rgb_transform(train)
         test = rgb_transform(test)
+    elif dataset_name == "cifar100":
+        train = datasets.CIFAR100(
+            root=f"data/{dataset_name}/",
+            download=True,
+            train=True,
+        )
+        test = datasets.CIFAR100(
+            root=f"data/{dataset_name}/",
+            download=True,
+            train=False,
+        )
+        train = rgb_transform(train)
+        test = rgb_transform(test)
+        n_labels = 100
     elif dataset_name == "mnist":
         train = datasets.MNIST(
             root=f"data/{dataset_name}/",
@@ -75,7 +93,7 @@ def get_dataset(dataset_name):
 
     n_train = int(len(train) * 0.9)
     train, val = torch.utils.data.random_split(train, [n_train, len(train) - n_train])
-    return train, val, test
+    return train, val, test, n_labels
 
 
 if __name__ == "__main__":

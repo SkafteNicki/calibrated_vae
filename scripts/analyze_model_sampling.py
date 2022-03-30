@@ -14,24 +14,22 @@ from scr.utils import brierscore
 
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("weight_file")
+    parser.add_argument("test_data", default=None)
+    args = parser.parse_args()
 
     os.makedirs("results/", exist_ok=True)
     with open("results/sampling_scores.txt", "w") as file:
         file.write("weight_file, sampling_size, acc, nll, brier, calibration\n")
     file_extension = args.weight_file[:-3].split("/")[-1]
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("weight_file")
-    parser.add_argument("test_data", default=None)
-    parser.add_argu
-    args = parser.parse_args()
-
-    model = get_classification_model_from_file(args.weight_file)
-    model.to(device)
-
-    _, _, test_data = get_dataset(args.test_data)
+    _, _, test_data, n_labels = get_dataset(args.test_data)
     test_data = torch.utils.data.Subset(test_data, list(np.random.permutation(1000)))
     test = torch.utils.data.DataLoader(test_data, batch_size=20)
+
+    model = get_classification_model_from_file(args.weight_file, n_labels)
+    model.to(device)
 
     reps = 5
     scores = {"sampling_size": [], "acc": [], "nll": [], "brier": [], "calibration": []}
@@ -56,7 +54,7 @@ if __name__ == "__main__":
                     ).cpu()
                     mean = log_probs.mean(dim=0)
 
-                    acc += accuracy(mean, y, num_classes=10).item()
+                    acc += accuracy(mean, y, num_classes=n_labels).item()
                     nll += torch.nn.functional.nll_loss(mean, y).item()
                     brier += brierscore(mean.softmax(dim=-1), y).item()
                     c.update(mean, y)
@@ -64,23 +62,23 @@ if __name__ == "__main__":
             acc /= len(test)
             nll /= len(test)
             brier /= len(test)
-            calibration = c.compute().item()
-            print(
-                f"accuracy={acc:0.4f}, nll={nll:0.4f}, brier={brier:0.4f}, calibration={calibration:0.4f}"
-            )
+#            calibration = c.compute().item()
+#            print(
+#                f"accuracy={acc:0.4f}, nll={nll:0.4f}, brier={brier:0.4f}, calibration={calibration:0.4f}"
+#            )
 
             scores["acc"][-1].append(acc)
             scores["nll"][-1].append(nll)
             scores["brier"][-1].append(brier)
-            scores["calibration"][-1].append(calibration)
+#            scores["calibration"][-1].append(calibration)
 
         with open("results/sampling_scores.txt", "a") as file:
             file.write(
-                f"{file_extension}, {sampling_size}, {scores[-1]['acc']}, {scores[-1]['nll']}, {scores[-1]['brier']}, {scores[-1]['calibration']} \n"
+                f"{file_extension}, {sampling_size}, {scores['acc'][-1]}, {scores['nll'][-1]}, {scores['brier'][-1]} \n"
             )
 
     os.makedirs("figures/sampling_performance/", exist_ok=True)
-    for name in ["acc", "nll", "brier", "calibration"]:
+    for name in ["acc", "nll", "brier"]: #, "calibration"]:
         fig = plt.figure()
         score_mean = np.array([np.mean(s) for s in scores[name]])
         score_std = np.array([np.std(s) for s in scores[name]])
