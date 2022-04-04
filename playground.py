@@ -103,3 +103,21 @@ idx = [1, 2, 3, 4, 5]
 for i,c in zip(range(len(idx)), color):
     plt.plot(X[1000*i:1000*(i+1), 0], X[1000*i:1000*(i+1), 1], '.', color=c)
 """
+
+"""
+os.makedirs("figures/generative_models/", exist_ok=True)
+with torch.inference_mode():
+    embeddings, labels = [ ], [ ]
+    for batch in train_dataloader:
+        x, y = batch
+        z_mu, z_std = model.encode(x)
+        embeddings.append(z_mu)
+        labels.append(y)
+    embeddings = torch.cat(embeddings, dim=0)
+    labels = torch.cat(labels, dim=0)
+
+fig = plt.figure()
+for label in torch.unique(labels):
+    plt.plot(embeddings[labels==label,0], embeddings[labels==label,1], '.')
+fig.savefig(f"figures/generative_models/{model_name}_{dataset_name}_latent_plot.png")
+"""
