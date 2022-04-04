@@ -1,12 +1,13 @@
-from typing import Any
 from copy import deepcopy
 from random import randint
-from torch import nn, Tensor
+from typing import Any
+
+from torch import Tensor, nn
 
 from scr.utils import rgetattr, rsetattr
 
 
-class EnsampleLayer(nn.ModuleList):
+class EnsembleLayer(nn.ModuleList):
     def __init__(self, submodule, size=5):
         super().__init__()
         for _ in range(size):
@@ -14,17 +15,8 @@ class EnsampleLayer(nn.ModuleList):
         self.size = size
 
     def forward(self, *args, **kwargs):
-        idx = randint(0, self.size-1)
+        idx = randint(0, self.size - 1)
         return self[idx](*args, **kwargs)
-
-
-class FixedEnsempleLayer(EnsampleLayer):
-    def __init__(self, submodule, size=5):
-        pass
-    
-    def forward(self, *args, **kwargs):
-        idx = randint(0, self.size-1)
-        return self[idx](*args, **kwargs)    
 
 
 class Reshape(nn.Module):
@@ -62,12 +54,12 @@ def create_mixensamble(module, n_ensemble, level="block"):
     elif level == "layer":
         attr_list = ["base.layer1", "base.layer2", "base.layer3", "base.layer4"]
     elif level == "conv":
-        attr_list = [ ]
+        attr_list = []
         for name, layer in module.named_modules():
             if isinstance(layer, nn.Conv2d):
                 attr_list.append(name)
     else:
-        raise ValueError('Unknown level for ensemble')
+        raise ValueError("Unknown level for ensemble")
 
     for attr in attr_list:
-        rsetattr(module, attr, EnsampleLayer(rgetattr(module, attr), n_ensemble))
+        rsetattr(module, attr, EnsembleLayer(rgetattr(module, attr), n_ensemble))
