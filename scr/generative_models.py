@@ -1,13 +1,18 @@
-from typing import Tuple
 import os
+from copy import deepcopy
+from random import randint
+from typing import Tuple
 
-from pytorch_lightning import LightningModule, loggers, callbacks
 import torch
-from torch import nn, distributions as D, Tensor
+from pytorch_lightning import LightningModule, Trainer, callbacks, loggers
+from torch import Tensor
+from torch import distributions as D
+from torch import nn
 
-from scr.layers import Reshape, AddBound
+from scr.layers import AddBound, EnsembleLayer, Reshape
 
-class DeepEnsembles(LightningModule):
+
+class VAE(LightningModule):
     @classmethod
     @property
     def trainer_config(cls):
@@ -22,24 +27,26 @@ class DeepEnsembles(LightningModule):
                 callbacks.EarlyStopping(
                     monitor="val_loss", mode="min", patience=10, verbose=True
                 ),
-                callbacks.RichProgressBar(leave=True),
             ],
-            "min_epochs": 20,
+            "max_epochs": 50,
         }
         return config
 
     def __init__(self, **kwargs):
+        super().__init__()
+
         self.encoder = nn.Sequential(
-                nn.Conv2d(1, 32, 3, stride=2),
-                nn.LeakyReLU(),
-                nn.Conv2d(32, 64, 3, stride=2),
-                nn.LeakyReLU(),
-                nn.Conv2d(64, 128, 3, stride=2),
-                nn.LeakyReLU(),
-                nn.Flatten(),
-            )
+            nn.Conv2d(1, 32, 3, stride=2),
+            nn.LeakyReLU(),
+            nn.Conv2d(32, 64, 3, stride=2),
+            nn.LeakyReLU(),
+            nn.Conv2d(64, 128, 3, stride=2),
+            nn.LeakyReLU(),
+            nn.Flatten(),
+        )
+
         self.decoder = nn.Sequential(
-            nn.Linear(self.hparams.latent_size, 128),
+            nn.Linear(2, 128),
             nn.LeakyReLU(),
             Reshape(128, 1, 1),
             nn.ConvTranspose2d(128, 64, 3, stride=2),
@@ -54,9 +61,9 @@ class DeepEnsembles(LightningModule):
             nn.Sigmoid(),
         )
 
-        self.encoder_mu = nn.Linear(512, self.hparams.latent_size)
+        self.encoder_mu = nn.Linear(512, 2)
         self.encoder_std = nn.Sequential(
-            nn.Linear(512, self.hparams.latent_size),
+            nn.Linear(512, 2),
             nn.Softplus(),
             AddBound(1e-6),
         )
@@ -72,13 +79,13 @@ class DeepEnsembles(LightningModule):
 
     @property
     def prior(self):
-        if self._prior is None or \
-            (self._prior is not None and self._prior.base_dist.loc.device != self.device):
-            ls = self.hparams.latent_size
+        if self._prior is None or (
+            self._prior is not None and self._prior.base_dist.loc.device != self.device
+        ):
             self._prior = D.Independent(
                 D.Normal(
-                    torch.zeros(1, ls, device=self.device),
-                    torch.ones(1, ls, device=self.device),
+                    torch.zeros(1, 2, device=self.device),
+                    torch.ones(1, 2, device=self.device),
                 ),
                 1,
             )
@@ -88,7 +95,9 @@ class DeepEnsembles(LightningModule):
     def beta(self):
         if self.training:
             self.warmup_steps += 1
-        return min([float(self.warmup_steps / self.hparams.kl_warmup_steps), 1.0])
+            return min([float(self.warmup_steps / 1000), 1.0])
+        else:
+            return 1.0
 
     def forward(self, z: Tensor) -> Tensor:
         return self.decoder(z)
@@ -104,5 +113,177 @@ class DeepEnsembles(LightningModule):
         q_dist = D.Independent(D.Normal(z_mu, z_std), 1)
         z = q_dist.rsample()
         x_hat = self(z)
-        kl = D.kl_divergence(q_dist, self.prior).mean()
+        kl = D.kl_divergence(q_dist, self.prior)
         return z_mu, z_std, z, x_hat, kl
+
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        z_mu, z_std, z, x_hat, kl = self.encode_decode(x)
+        recon = self.recon(x_hat, x).sum(dim=[1, 2, 3])
+        loss = (recon + kl).mean()
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        z_mu, z_std, z, x_hat, kl = self.encode_decode(x)
+        recon = self.recon(x_hat, x).sum(dim=[1, 2, 3])
+        loss = (recon + kl).mean()
+        self.log("val_loss", loss)
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=1e-4)
+
+    @classmethod
+    def fit(cls, n_ensemble, train_dataloader, val_dataloader=None):
+        model = cls()
+        config = cls.trainer_config
+        trainer = Trainer(**config)
+        trainer.fit(
+            model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
+        )
+        model.eval()
+        return model
+
+    @staticmethod
+    def save_checkpoint(model, path):
+        torch.save(model.state_dict(), path)
+
+    @classmethod
+    def load_checkpoint(cls, path, n_ensemble=None):
+        model = cls()
+        model.load_state_dict(torch.load(path))
+        return model
+
+    @staticmethod
+    def refit_encoder(model_instance, dataloader):
+        pass
+
+    @staticmethod
+    @torch.inference_mode
+    def calc_score(model, score_method, dataloader):
+        if score_method == "logprob":
+            score = []
+            for batch in dataloader:
+                _, _, _, xhat, _ = model.encode_decode(x.to(self.device))
+                dist = D.Independen(D.Bernoulli(probs=x_hat), 3)
+                score.append(dist.log_prob(x.to(self.device)))
+            return torch.cat(score, dim=0)
+        else:
+            raise ValueError("Unknown scoring method")
+
+
+class EnsembleVAE(VAE):
+    @classmethod
+    def fit(cls, n_ensemble, train_dataloader, val_dataloader=None):
+        models = []
+        for _ in range(n_ensemble):
+            model = cls()
+            config = cls.trainer_config
+            trainer = Trainer(**config)
+            trainer.fit(
+                model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
+            )
+            model.eval()
+            models.append(deepcopy(model))
+        return models
+
+    @staticmethod
+    def save_checkpoint(model, path):
+        torch.save([m.state_dict() for m in model], path)
+
+    @classmethod
+    def load_checkpoint(cls, path, n_ensemble=None):
+        model = cls()
+        states = torch.load(path)
+        models = []
+        for s in states:
+            temp = deepcopy(model)
+            temp.load_state_dict(s)
+            temp.eval()
+            models.append(temp)
+        return models
+
+    @staticmethod
+    @torch.inference_mode
+    def calc_score(model, score_method, dataloader):
+        if score_method == "logprob":
+            score = []
+            for batch in dataloader:
+                s = []
+                for m in model:
+                    _, _, _, xhat, _ = m.encode_decode(x.to(self.device))
+                    dist = D.Independen(D.Bernoulli(probs=x_hat), 3)
+                    s.append(dist.log_prob(x.to(self.device)))
+                score.append(torch.stack(s, dim=0).mean(dim=0))
+            return torch.cat(score, dim=0)
+        elif score_method == "waic":
+            score = []
+            for batch in dataloader:
+                for m in model:
+                    _, _, _, xhat, _ = m.encode_decode(x.to(self.device))
+                    dist = D.Independen(D.Bernoulli(probs=x_hat), 3)
+                    s.append(dist.log_prob(x.to(self.device)))
+                s = torch.stack(s, dim=0)
+                score.append(s.mean(dim=0) - s.var(dim=0))
+            return torch.cat(score, dim=0)
+        else:
+            raise ValueError("Unknown scoring method")
+
+
+class MixVAE(VAE):
+    def __init__(self, n_ensemble):
+        super().__init__()
+        self.n_ensemble = n_ensemble
+        self.encoder = EnsembleLayer(self.encoder, n_ensemble)
+        self.deocder = EnsembleLayer(self.decoder, n_ensemble)
+        self.encoder_mu = EnsembleLayer(self.encoder_mu, n_ensemble)
+        self.encoder_std = EnsembleLayer(self.encoder_std, n_ensemble)
+
+    def encode(self, x: Tensor) -> Tensor:
+        idx = randint(0, self.n_ensemble - 1)
+        h = self.encoder[idx](x)
+        z_mu = self.encoder_mu[idx](h)
+        z_std = self.encoder_std[idx](h)
+        return z_mu, z_std
+
+    @classmethod
+    def fit(cls, n_ensemble, train_dataloader, val_dataloader=None):
+        model = cls(n_ensemble)
+        config = cls.trainer_config
+        trainer = Trainer(**config)
+        trainer.fit(
+            model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader
+        )
+        model.eval()
+        return model
+
+    @classmethod
+    def load_checkpoint(cls, path, n_ensemble=None):
+        model = cls(n_ensemble)
+        model.load_state_dict(torch.load(path))
+        return model
+
+
+def get_model(name: str) -> LightningModule:
+    if name == "vae":
+        model_class = VAE
+    elif name == "ensemblevae":
+        model_class = EnsembleVAE
+    elif name == "mixvae":
+        model_class = MixVAE
+    else:
+        raise ValueError("Unknown model")
+    return model_class
+
+
+def get_model_from_file(path: str):
+    if "ensemblevae" in path:
+        model_class = EnsembleVAE
+    elif "mixvae" in path:
+        model_class = MixVAE
+    elif "vae" in path:
+        model_class = VAE
+    else:
+        raise ValueError("Unknown model")
+    model = model_class.load_checkpoint(path)
+    return model, model_class
