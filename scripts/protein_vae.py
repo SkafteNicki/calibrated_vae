@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 import torch
 import matplotlib.pyplot as plt
 from random import randint
-from scr.layers import EnsampleLayer
+from scr.layers import EnsembleLayer
 from scr.data import get_dataset, important_organisms, aa1_to_index
 import os
 
@@ -34,6 +34,14 @@ class VAE(pl.LightningModule):
 
         self.loss_fn = nn.CrossEntropyLoss(reduction='none', ignore_index=22)
         self._prior = None
+        self._step_counter = 0
+
+    @property
+    def beta(self):
+        if self.training:
+            self._step_counter += 1
+            return min(1.0, float(self._step_counter / 20000))
+        return 1.0
 
     @property
     def prior(self):
@@ -46,7 +54,7 @@ class VAE(pl.LightningModule):
         x = nn.functional.one_hot(x, TOKEN_SIZE)
         h = self.encoder(x.float().reshape(x.shape[0], -1))
         return self.encoder_mu(h), self.encoder_scale(h)
-        
+
     def decode(self, z):
         recon = self.decoder(z).reshape(*z.shape[:-1], TOKEN_SIZE, -1)
         return recon
@@ -58,17 +66,17 @@ class VAE(pl.LightningModule):
         recon = self.decode(z)
         return recon, q_dist
 
-    def _step(self, batch, batch_idx):
+    def _step(self, batch, beta=1.0):
         x = batch[0].long()
         recon, q_dist = self(x)
         recon_loss = self.loss_fn(recon, x).sum(dim=-1).mean()
         kl_loss = D.kl_divergence(q_dist, self.prior).mean()
-        loss = recon_loss + kl_loss
+        loss = recon_loss + beta * kl_loss
         acc = (recon.argmax(dim=1) == x)[x!=22].float().mean()
         return loss, recon_loss, kl_loss, acc
 
     def training_step(self, batch, batch_idx):
-        loss, recon_loss, kl_loss, acc = self._step(batch, batch_idx)
+        loss, recon_loss, kl_loss, acc = self._step(batch, beta=self.beta)
 
         self.log_dict({'train_loss': loss,
                        'train_recon': recon_loss,
@@ -78,9 +86,9 @@ class VAE(pl.LightningModule):
                       logger=True)
 
         return loss
-    
+
     def validation_step(self, batch, batch_idx):
-        loss, recon_loss, kl_loss, acc = self._step(batch, batch_idx)
+        loss, recon_loss, kl_loss, acc = self._step(batch)
         self.log_dict(
             {
                 'val_loss': loss,
@@ -95,19 +103,20 @@ class VAE(pl.LightningModule):
         x, y =  batch
         encoder_mu, encoder_std = self.encode(x)
         return {
-            'encoder_mean': encoder_mu, 
-            'encoder_std': encoder_std, 
+            'encoder_mean': encoder_mu,
+            'encoder_std': encoder_std,
             'label': y
         }
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=1e-3)
+        return torch.optim.Adam(self.parameters(), lr=1e-4)
+
 
 class MixVAE(VAE):
     def __init__(self, ensemble_size=5):
         super().__init__()
 
-        self.encoder = EnsampleLayer(
+        self.encoder = EnsembleLayer(
             nn.Sequential(
                 nn.Linear(SEQ_LEN*TOKEN_SIZE, 500),
                 nn.ReLU(),
@@ -117,10 +126,10 @@ class MixVAE(VAE):
             ensemble_size
         )
 
-        self.encoder_mu = EnsampleLayer(nn.Linear(100, 2), ensemble_size)
-        self.encoder_scale = EnsampleLayer(nn.Sequential(nn.Linear(100, 2), nn.Softplus()), ensemble_size)
+        self.encoder_mu = EnsembleLayer(nn.Linear(100, 2), ensemble_size)
+        self.encoder_scale = EnsembleLayer(nn.Sequential(nn.Linear(100, 2), nn.Softplus()), ensemble_size)
 
-        self.decoder = EnsampleLayer(
+        self.decoder = EnsembleLayer(
             nn.Sequential(
                 nn.Linear(2, 100),
                 nn.ReLU(),
@@ -133,7 +142,7 @@ class MixVAE(VAE):
         self.ensemble_size = ensemble_size
         self.loss_fn = nn.CrossEntropyLoss(reduction='none', ignore_index=22)
         self._prior = None
-        
+
 
     def encode(self, x):
         idx = randint(0, self.ensemble_size-1)
@@ -145,9 +154,9 @@ class MixVAE(VAE):
 if __name__ == "__main__":
     train, val, test = get_dataset('protein')
 
-    train_dl = torch.utils.data.DataLoader(train, batch_size=16)
-    val_dl = torch.utils.data.DataLoader(val, batch_size=16)
-    
+    train_dl = torch.utils.data.DataLoader(train, batch_size=32)
+    val_dl = torch.utils.data.DataLoader(val, batch_size=32)
+
     model = MixVAE()
 
     trainer = pl.Trainer(
@@ -155,7 +164,7 @@ if __name__ == "__main__":
         accelerator="auto",
         num_sanity_val_steps=0,
         devices=1,
-        max_epochs=20
+        max_epochs=100
     )
     trainer.fit(model, train_dataloaders=train_dl, val_dataloaders=val_dl)
     
