@@ -6,6 +6,7 @@ from random import randint
 from scr.layers import EnsembleLayer
 from scr.data import get_dataset, important_organisms, aa1_to_index
 import os
+from stochman.manifold import EmbeddedManifold
 
 SEQ_LEN = 2592
 TOKEN_SIZE = len(aa1_to_index)
@@ -15,7 +16,11 @@ class VAE(pl.LightningModule):
         super().__init__()
 
         self.encoder = nn.Sequential(
-            nn.Linear(SEQ_LEN*TOKEN_SIZE, 500),
+            nn.Linear(SEQ_LEN*TOKEN_SIZE, 1500),
+            nn.ReLU(),
+            nn.Linear(1500, 1000),
+            nn.ReLU(),
+            nn.Linear(1000, 500),
             nn.ReLU(),
             nn.Linear(500, 100),
             nn.ReLU()
@@ -29,10 +34,14 @@ class VAE(pl.LightningModule):
             nn.ReLU(),
             nn.Linear(100, 500),
             nn.ReLU(),
-            nn.Linear(500, SEQ_LEN*TOKEN_SIZE)
+            nn.Linear(500, 1000),
+            nn.ReLU(),
+            nn.Linear(1000, 1500),
+            nn.ReLU(),
+            nn.Linear(1500, SEQ_LEN*TOKEN_SIZE)
         )
 
-        self.loss_fn = nn.CrossEntropyLoss(reduction='none', ignore_index=22)
+        self.loss_fn = nn.CrossEntropyLoss(reduction='none')
         self._prior = None
         self._step_counter = 0
 
@@ -112,16 +121,20 @@ class VAE(pl.LightningModule):
         return torch.optim.Adam(self.parameters(), lr=1e-4)
 
 
-class MixVAE(VAE):
+class MixVAE(VAE, EmbeddedManifold):
     def __init__(self, ensemble_size=5):
         super().__init__()
 
         self.encoder = EnsembleLayer(
             nn.Sequential(
-                nn.Linear(SEQ_LEN*TOKEN_SIZE, 500),
-                nn.ReLU(),
-                nn.Linear(500, 100),
-                nn.ReLU()
+                nn.Linear(SEQ_LEN*TOKEN_SIZE, 750),
+                nn.SiLU(),
+                nn.Linear(750, 500),
+                nn.SiLU(),
+                nn.Linear(500, 250),
+                nn.SiLU(),
+                nn.Linear(250, 100),
+                nn.SiLU()
             ),
             ensemble_size
         )
@@ -132,30 +145,59 @@ class MixVAE(VAE):
         self.decoder = EnsembleLayer(
             nn.Sequential(
                 nn.Linear(2, 100),
-                nn.ReLU(),
-                nn.Linear(100, 500),
-                nn.ReLU(),
-                nn.Linear(500, SEQ_LEN*TOKEN_SIZE)
+                nn.SiLU(),
+                nn.Linear(100, 250),
+                nn.SiLU(),
+                nn.Linear(250, 500),
+                nn.SiLU(),
+                nn.Linear(500, 750),
+                nn.SiLU(),
+                nn.Linear(750, SEQ_LEN*TOKEN_SIZE)
             ),
             ensemble_size
         )
         self.ensemble_size = ensemble_size
-        self.loss_fn = nn.CrossEntropyLoss(reduction='none', ignore_index=22)
+        self.loss_fn = nn.CrossEntropyLoss(reduction='none')
         self._prior = None
 
 
-    def encode(self, x):
-        idx = randint(0, self.ensemble_size-1)
+    def encode(self, x, idx=None):
+        if idx is None:
+            idx = randint(0, self.ensemble_size-1)
         x = nn.functional.one_hot(x, TOKEN_SIZE)
         h = self.encoder[idx](x.float().reshape(x.shape[0], -1))
         return self.encoder_mu[idx](h), self.encoder_scale[idx](h)
+
+    def decode(self, z, idx=None):
+        if idx is None:
+            return self.decoder(z).reshape(*z.shape[:-1], TOKEN_SIZE, -1)
+        else:
+            return self.decoder[idx](z).reshape(*z.shape[:-1], TOKEN_SIZE, -1)
+
+    def embed(self, points, jacobian=False):
+        pass
+
+    def curve_energy(self, curve):
+        if curve.dim() == 2: curve.unsqueeze_(0) # BxNxd
+
+        recon = torch.stack([self.decode(curve, i) for i in range(5)], 0) # 5xBxNxFxS
+        recon = recon.softmax(dim=3)
+
+        x = recon[:,:,:-1,:,:]; y = recon[:,:,1:,:,:]; # 5xBx(N-1)xFxS
+        dt = torch.norm(curve[:,:-1,:] - curve[:,1:,:], p=2, dim=-1) # Bx(N-1)
+        energy = (1-(x*y).sum(dim=-2)).sum(dim=-1) # 5xBx(N-1)
+        energy = 2*(energy * dt.unsqueeze(0)).sum(dim=-1) # 5xB
+        return energy.std(0) # B
+
+    def curve_length(self, curve):
+        return torch.sqrt(self.curve_energy(curve))
 
 
 if __name__ == "__main__":
     train, val, test = get_dataset('protein')
 
-    train_dl = torch.utils.data.DataLoader(train, batch_size=32)
-    val_dl = torch.utils.data.DataLoader(val, batch_size=32)
+    train_dl = torch.utils.data.DataLoader(train, batch_size=64)
+    val_dl = torch.utils.data.DataLoader(val, batch_size=64)
 
     model = MixVAE()
 
@@ -164,17 +206,17 @@ if __name__ == "__main__":
         accelerator="auto",
         num_sanity_val_steps=0,
         devices=1,
-        max_epochs=100
+        max_epochs=500,
     )
     trainer.fit(model, train_dataloaders=train_dl, val_dataloaders=val_dl)
-    
+
     os.makedirs("models/generate_models/", exist_ok=True)
     torch.save(model.state_dict(), f"models/generate_models/{model.__class__.__name__}.pt",)
-    
+    """
     predictions = trainer.predict(model, dataloaders=train_dl)
     embeddings = torch.cat([p['encoder_mean'] for p in predictions], dim=0)
     labels = torch.cat([p['label'] for p in predictions], dim=0)
-    
+
     for name in important_organisms:
         current_label = important_organisms[name]
         plt.plot(
@@ -182,16 +224,16 @@ if __name__ == "__main__":
             embeddings[labels == current_label, 1],
             '.'
         )
-    
+
     plt.show()
-    
+
     with torch.inference_mode():
         plot_bound = 7.0
         n_points = 50
         linspaces = [torch.linspace(-plot_bound, plot_bound, n_points) for _ in range(2)]
         meshgrid = torch.meshgrid(linspaces)
         z_sample = torch.stack(meshgrid).reshape(2, -1).T
-        
+
         samples = [ ]
         for _ in range(5):
             x_out = model.decode(z_sample)
@@ -209,7 +251,7 @@ if __name__ == "__main__":
             levels=50,
             zorder=0,
         )
-        
+
         plt.contourf(
             z_sample[:, 0].reshape(n_points, n_points),
             z_sample[:, 1].reshape(n_points, n_points),
@@ -217,3 +259,4 @@ if __name__ == "__main__":
             levels=50,
             zorder=0,
         )
+    """
