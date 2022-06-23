@@ -54,8 +54,12 @@ def rgb_transform(dataset: Dataset) -> Dataset:
 
 
 def gray_transform(dataset: Dataset, n_channels: int) -> Dataset:
-    data = torch.tensor(dataset.data[:, None].repeat(1, n_channels, 1, 1)) / 255.0
-    targets = torch.tensor(dataset.targets)
+    data = dataset.data[:, None].repeat(1, n_channels, 1, 1) / 255.0
+    targets = dataset.targets
+    if not isinstance(data, torch.Tensor):
+        data = torch.tensor(data)
+    if not isinstance(targets, torch.Tensor):
+        targets = torch.tensor(targets)
     return torch.utils.data.TensorDataset(data, targets)
 
 
@@ -227,7 +231,7 @@ def get_dataset(
             train, [n_train, len(train) - n_train]
         )
 
-    return train, val, test
+    return train, val, test, n_labels
 
 
 if __name__ == "__main__":

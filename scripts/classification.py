@@ -65,7 +65,7 @@ if __name__ == "__main__":
         for model_name in args.models:
             model_class = get_model(model_name)
             for rep in range(args.num_reps):
-                train, val, test, n_labels = get_dataset(dataset_name)
+                train, val, test, n_labels = get_dataset(dataset_name, n_channels=3)
                 train_dataloader = torch.utils.data.DataLoader(train, batch_size=64)
                 val_dataloader = torch.utils.data.DataLoader(val, batch_size=64)
                 test_dataloader = torch.utils.data.DataLoader(test, batch_size=64)

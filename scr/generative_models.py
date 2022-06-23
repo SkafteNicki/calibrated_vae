@@ -1,5 +1,6 @@
 import os
 from copy import deepcopy
+from itertools import chain
 from random import randint
 from typing import Tuple
 
@@ -8,6 +9,7 @@ from pytorch_lightning import LightningModule, Trainer, callbacks, loggers
 from torch import Tensor
 from torch import distributions as D
 from torch import nn
+from tqdm import tqdm
 
 from scr.layers import AddBound, EnsembleLayer, Reshape
 
@@ -155,18 +157,34 @@ class VAE(LightningModule):
         return model
 
     @staticmethod
-    def refit_encoder(model_instance, dataloader):
-        pass
+    def refit_encoder(model, dataloader):
+        model.configure_optimizer = lambda: torch.optim.Adam(
+            chain(
+                model.encoder.parameters(),
+                model.encoder_mu.parameters(),
+                model.encoder_std.parameters(),
+            ),
+            lr=1e-4
+        )
+        trainer = Trainer(
+            logger=False, 
+            max_epochs=2,
+            accelerator="auto",
+            devices=1,
+            enable_model_summary=False,
+        )   
+        trainer.fit(model, dataloader)
 
     @staticmethod
-    @torch.inference_mode
+    @torch.inference_mode()
     def calc_score(model, score_method, dataloader):
         if score_method == "logprob":
             score = []
-            for batch in dataloader:
-                _, _, _, xhat, _ = model.encode_decode(x.to(self.device))
-                dist = D.Independen(D.Bernoulli(probs=x_hat), 3)
-                score.append(dist.log_prob(x.to(self.device)))
+            for batch in tqdm(dataloader):
+                x, _ = batch
+                _, _, _, x_hat, _ = model.encode_decode(x.to(model.device))
+                dist = D.Independent(D.Bernoulli(probs=x_hat, validate_args=False), 3)
+                score.append(dist.log_prob(x.to(model.device)))
             return torch.cat(score, dim=0)
         else:
             raise ValueError("Unknown scoring method")
@@ -204,30 +222,34 @@ class EnsembleVAE(VAE):
         return models
 
     @staticmethod
-    @torch.inference_mode
+    def refit_encoder(model, dataloader):
+        for m in model:
+            super(EnsembleVAE, EnsembleVAE).refit_encoder(m, dataloader)
+
+    @staticmethod
+    @torch.inference_mode()
     def calc_score(model, score_method, dataloader):
-        if score_method == "logprob":
-            score = []
-            for batch in dataloader:
-                s = []
-                for m in model:
-                    _, _, _, xhat, _ = m.encode_decode(x.to(self.device))
-                    dist = D.Independen(D.Bernoulli(probs=x_hat), 3)
-                    s.append(dist.log_prob(x.to(self.device)))
-                score.append(torch.stack(s, dim=0).mean(dim=0))
-            return torch.cat(score, dim=0)
-        elif score_method == "waic":
-            score = []
-            for batch in dataloader:
-                for m in model:
-                    _, _, _, xhat, _ = m.encode_decode(x.to(self.device))
-                    dist = D.Independen(D.Bernoulli(probs=x_hat), 3)
-                    s.append(dist.log_prob(x.to(self.device)))
-                s = torch.stack(s, dim=0)
+        score = []
+        for batch in tqdm(dataloader):
+            x, _ = batch
+            s = []
+            for m in model:
+                _, _, _, x_hat, _ = m.encode_decode(x.to(m.device))
+                dist = D.Independent(D.Bernoulli(probs=x_hat, validate_args=False), 3)
+                if score_method != "entropy":
+                    s.append(dist.log_prob(x.to(m.device)))
+                else:
+                    s.append(dist.entropy())
+            s = torch.stack(s, dim=0)
+            if score_method == "logprob":
+                score.append(s.mean(dim=0))
+            elif score_method == "waic":
                 score.append(s.mean(dim=0) - s.var(dim=0))
-            return torch.cat(score, dim=0)
-        else:
-            raise ValueError("Unknown scoring method")
+            elif score_method == "entropy":
+                score.append(s.var(dim=0))
+            else:
+                raise ValueError("Unknown scoring method")    
+        return torch.cat(score, dim=0)
 
 
 class MixVAE(VAE):
@@ -235,7 +257,7 @@ class MixVAE(VAE):
         super().__init__()
         self.n_ensemble = n_ensemble
         self.encoder = EnsembleLayer(self.encoder, n_ensemble)
-        self.deocder = EnsembleLayer(self.decoder, n_ensemble)
+        self.decoder = EnsembleLayer(self.decoder, n_ensemble)
         self.encoder_mu = EnsembleLayer(self.encoder_mu, n_ensemble)
         self.encoder_std = EnsembleLayer(self.encoder_std, n_ensemble)
 
@@ -257,10 +279,36 @@ class MixVAE(VAE):
         model.eval()
         return model
 
+    @staticmethod
+    @torch.inference_mode()
+    def calc_score(model, score_method, dataloader):
+        score = []
+        for batch in tqdm(dataloader):
+            x, _ = batch
+            s = []
+            for _ in range(25):  # number of samples
+                _, _, _, x_hat, _ = model.encode_decode(x.to(model.device))
+                dist = D.Independent(D.Bernoulli(probs=x_hat, validate_args=False), 3)
+                if score_method != "entropy":
+                    s.append(dist.log_prob(x.to(model.device)))
+                else:
+                    s.append(dist.entropy())
+            s = torch.stack(s, dim=0)
+            if score_method == "logprob":
+                score.append(s.mean(dim=0))
+            elif score_method == "waic":
+                score.append(s.mean(dim=0) - s.var(dim=0))
+            elif score_method == "entropy":
+                score.append(s.var(dim=0))
+            else:
+                raise ValueError("Unknown scoring method")    
+        return torch.cat(score, dim=0)
+
     @classmethod
     def load_checkpoint(cls, path, n_ensemble=None):
         model = cls(n_ensemble)
         model.load_state_dict(torch.load(path))
+        model.eval()
         return model
 
 
@@ -285,5 +333,5 @@ def get_model_from_file(path: str):
         model_class = VAE
     else:
         raise ValueError("Unknown model")
-    model = model_class.load_checkpoint(path)
+    model = model_class.load_checkpoint(path, n_ensemble=5)
     return model, model_class

@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 import torch
 import matplotlib.pyplot as plt
 from random import randint
-from scr.layers import EnsampleLayer
+from scr.layers import EnsembleLayer
 from scr.data import get_dataset, important_organisms, aa1_to_index
 import os
 
@@ -107,7 +107,7 @@ class MixVAE(VAE):
     def __init__(self, ensemble_size=5):
         super().__init__()
 
-        self.encoder = EnsampleLayer(
+        self.encoder = EnsembleLayer(
             nn.Sequential(
                 nn.Linear(SEQ_LEN*TOKEN_SIZE, 500),
                 nn.ReLU(),
@@ -117,10 +117,10 @@ class MixVAE(VAE):
             ensemble_size
         )
 
-        self.encoder_mu = EnsampleLayer(nn.Linear(100, 2), ensemble_size)
-        self.encoder_scale = EnsampleLayer(nn.Sequential(nn.Linear(100, 2), nn.Softplus()), ensemble_size)
+        self.encoder_mu = EnsembleLayer(nn.Linear(100, 2), ensemble_size)
+        self.encoder_scale = EnsembleLayer(nn.Sequential(nn.Linear(100, 2), nn.Softplus()), ensemble_size)
 
-        self.decoder = EnsampleLayer(
+        self.decoder = EnsembleLayer(
             nn.Sequential(
                 nn.Linear(2, 100),
                 nn.ReLU(),

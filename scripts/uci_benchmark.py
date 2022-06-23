@@ -53,12 +53,13 @@ if __name__ == "__main__":
         input_size = data.shape[1]
 
         for model_class in [Ensamble, EnsambleNLL, MixEnsemble, MixEnsembleNLL]:
+        #for model_class in [Ensamble, MixEnsemble]:
             for ensemble in args.ensemble:
 
                 model_name = model_class.__name__
                 scores = {"rmse": [], "nll": [], "time": []}
 
-                for rep in range(20):
+                for rep in range(10):
                     train_index, test_index = train_test_split(
                         np.arange(len(data)), test_size=0.1, random_state=(rep + 1) * SEED
                     )
@@ -96,8 +97,8 @@ if __name__ == "__main__":
                     start = time.time()
                     models = []
                     for _ in range(reps):
-                        model = model_class(input_size, 100, nn.ReLU(), ensemble)
-                        optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
+                        model = model_class(input_size, 100, nn.SiLU(), ensemble)
+                        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
                         for epoch in range(n_epochs):
                             for batch in train:
@@ -105,9 +106,10 @@ if __name__ == "__main__":
                                 loss = model.loss(*batch)
                                 loss.backward()
                                 optimizer.step()
-
+                        
                         models.append(model)
                     end = time.time()
+                    print(f'Final loss {rep}/20: {loss.item()}')
 
                     y = tensor(test_target, dtype=torch.float32)
                     mean, var = model_class.ensample_predict(

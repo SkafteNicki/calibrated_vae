@@ -3,7 +3,7 @@ from functools import partial
 import torch
 from torch import nn
 
-from scr.layers import EnsampleLayer
+from scr.layers import EnsembleLayer
 
 
 class Ensamble(nn.Module):
@@ -24,8 +24,8 @@ class Ensamble(nn.Module):
         with torch.no_grad():
             ypred = [model(x) for model in model_list]
             if scaler is not None:
-                ypred = [scaler.inverse_transform(yp) for yp in ypred]
-            ypred = torch.tensor(ypred)
+                ypred = [torch.tensor(scaler.inverse_transform(yp)) for yp in ypred]
+            ypred = torch.stack(ypred)
             return ypred.mean(dim=0), ypred.var(dim=0)
         
 
@@ -54,9 +54,9 @@ class EnsambleNLL(nn.Module):
             means = [model(x)[0] for model in model_list]
             vars = [model(x)[1] for model in model_list]
             if scaler is not None:
-                means = [scaler.inverse_transform(m) for m in means]
+                means = [torch.tensor(scaler.inverse_transform(m)) for m in means]
                 vars = [v * scaler.var_ for v in vars]
-            means = torch.tensor(means)
+            means = torch.stack(means)
             vars = torch.stack(vars)
             mean = means.mean(dim=0)
             var = (vars + means ** 2).mean(dim=0) - mean ** 2
@@ -66,7 +66,7 @@ class EnsambleNLL(nn.Module):
 class MixEnsemble(nn.Module):
     def __init__(self, input_dim, hidden_dim, activate_fn, ensemble_size = 5):
         super().__init__()
-        ensemble_layer = partial(EnsampleLayer, size=ensemble_size)
+        ensemble_layer = partial(EnsembleLayer, size=ensemble_size)
         self.model = nn.Sequential(
             ensemble_layer(nn.Linear(input_dim, hidden_dim)),
             activate_fn,
@@ -84,15 +84,15 @@ class MixEnsemble(nn.Module):
         with torch.no_grad():
             ypred = [model_list[0](x) for _ in range(25)]
             if scaler is not None:
-                ypred = [scaler.inverse_transform(yp) for yp in ypred]
-            ypred = torch.tensor(ypred)
+                ypred = [torch.tensor(scaler.inverse_transform(yp)) for yp in ypred]
+            ypred = torch.stack(ypred)
             return ypred.mean(dim=0), ypred.var(dim=0)
 
 
 class MixEnsembleNLL(nn.Module):
     def __init__(self, input_dim, hidden_dim, activate_fn, ensemble_size = 5):
         super().__init__()
-        ensemble_layer = partial(EnsampleLayer, size=ensemble_size)
+        ensemble_layer = partial(EnsembleLayer, size=ensemble_size)
         self.base = nn.Sequential(
             ensemble_layer(nn.Linear(input_dim, hidden_dim)),
             activate_fn,
@@ -118,9 +118,9 @@ class MixEnsembleNLL(nn.Module):
             means = [out[0] for out in output]
             vars = [out[1] for out in output]
             if scaler is not None:
-                means = [scaler.inverse_transform(m) for m in means]
+                means = [torch.tensor(scaler.inverse_transform(m)) for m in means]
                 vars = [v * scaler.var_ for v in vars]
-            means = torch.tensor(means)
+            means = torch.stack(means)
             vars = torch.stack(vars)
             mean = means.mean(dim=0)
             var = (vars + means ** 2).mean(dim=0) - mean ** 2
