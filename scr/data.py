@@ -155,6 +155,9 @@ def get_dataset(
                 [transforms.Resize((28, 28)), transforms.ToTensor()]
             ),
         )
+    elif dataset_name == "imagenet":
+        train = datasets.ImageNet(root=f"data/{dataset_name}/", split="train")
+        test = datasets.ImageNet(root=f"data/{dataset_name}/", split="val")
     elif dataset_name == "celeba":
         train = datasets.CelebA(
             root=f"data/{dataset_name}/",
@@ -171,6 +174,34 @@ def get_dataset(
             split="test",
             download=True,
         )
+    elif dataset_name == "genome":
+        from tfrecord.torch.dataset import TFRecordDataset, MultiTFRecordDataset
+
+        tfrecord_path = "before_2011_in_tr-20220623T125033Z-001/before_2011_in_tr/before_2011_in_tr-00000-of-00010.tfrecord"
+        dataset = TFRecordDataset(tfrecord_path, None)
+
+        def f(batch):
+            return {
+                'x': torch.nn.utils.rnn.pad_sequence([torch.tensor(b['x']) for b in batch], batch_first=True),
+                'y': torch.cat([torch.tensor(b['y']) for b in batch], 0),
+                'z': torch.nn.utils.rnn.pad_sequence([torch.tensor(b['z']) for b in batch], batch_first=True)
+            }
+
+        loader = torch.utils.data.DataLoader(dataset, batch_size=32, collate_fn=f)
+        data = next(iter(loader))
+        print(data)
+
+        tfrecord_path = "before_2011_in_tr-20220623T125033Z-001/before_2011_in_tr/before_2011_in_tr-0000{}-of-00010.tfrecord"
+        dataset_multi = MultiTFRecordDataset(
+            tfrecord_path, 
+            None, 
+            {k: 0.1 for k in range(10)}
+        )
+
+        loader = torch.utils.data.DataLoader(dataset_multi, batch_size=32, collate_fn=f)
+        l = iter(loader)
+        data = next(iter(loader))
+        print(data)
     elif dataset_name == "protein":
         import os
         import pickle as pkl

@@ -110,7 +110,7 @@ class VAE(pl.LightningModule):
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
         x, y =  batch
-        encoder_mu, encoder_std = self.encode(x)
+        encoder_mu, encoder_std = self.encode(x.long())
         return {
             'encoder_mean': encoder_mu,
             'encoder_std': encoder_std,

@@ -4,19 +4,20 @@ import pytorch_lightning as pl
 import torch
 from scr.data import get_dataset, important_organisms
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 from matplotlib.patches import Ellipse
 import torch.distributions as D
 from torch import nn
 from tqdm import tqdm
 from sklearn.neighbors import KNeighborsClassifier
 
-train, val, test = get_dataset('protein')
+train, val, test, _ = get_dataset('protein')
 train_dl = torch.utils.data.DataLoader(train, batch_size=32)
 val_dl = torch.utils.data.DataLoader(val, batch_size=32)
 test_dl = torch.utils.data.DataLoader(test, batch_size=32)
 
 model = MixVAE()
-model.load_state_dict(torch.load("protein_vae5.pt"))
+model.load_state_dict(torch.load("MixVAE.pt"))
 
 trainer = pl.Trainer(logger=False)
 predictions = trainer.predict(model, dataloaders=train_dl)
@@ -38,17 +39,16 @@ def plot_embeddings(ax=None, alpha=1.0):
 plot_embeddings()
 
 in_datapoint = train[0][0].reshape(1, -1)
-
 idx = torch.where(in_datapoint != 22)[1]
 n = len(idx)
 r_idx = torch.randint(n, (int(n * 0.8),))
 out_datapoint = in_datapoint.clone()
-out_datapoint[0][idx[r_idx]] = torch.randint(0, 20, (len(r_idx),))
+out_datapoint[0][idx[r_idx]] = torch.randint(0, 20, (len(r_idx),)).int()
 # out_datapoint = torch.randint(0, 23, in_datapoint.shape)
 
 def get_full_encoding(datapoint):
     with torch.no_grad():
-        x = nn.functional.one_hot(datapoint, TOKEN_SIZE)
+        x = nn.functional.one_hot(datapoint.long(), TOKEN_SIZE)
         m, s = [ ], [ ]
         for i in range(5):
             h = model.encoder[i](x.float().reshape(x.shape[0], -1))
@@ -77,6 +77,7 @@ for l, c, m, s in zip(['in', 'out'], ['red', 'blue'], [m_in, m_out], [s_in, s_ou
 ax.legend()
 ax.set_xlim(-6,6)
 ax.set_ylim(-6,6)
+ax.set_title("In/out distribution encoding")
 
 fig, ax = plt.subplots(1, 5)
 with torch.inference_mode():
@@ -86,7 +87,7 @@ with torch.inference_mode():
         decoded.append([[ ], [ ], [ ], [ ], [ ]])
         for batch_idx, batch in tqdm(enumerate(train_dl), desc=f'Decoding using decoder {i}', total=len(train_dl)):
             x, y = batch
-            z_mu, _ = model.encode(x, i)
+            z_mu, _ = model.encode(x.long(), i)
             for j in range(5):
                 if batch_idx > 50:
                     break
@@ -103,6 +104,7 @@ with torch.inference_mode():
                 embeddings_i[labels_i == current_label, 1],
                 '.',
             )
+            ax[i].set_title(f"Encoder {i+1}")
 
 for i in range(5):
     for j in range(5):
@@ -115,8 +117,18 @@ disagreement = torch.zeros(25, 25)
 for i in range(25):
     for j in range(25):
         disagreement[i,j] = (decoded_f[i] != decoded_f[j]).float().sum(1).mean()
+        disagreement[i,j] = float("-inf") if i == j else disagreement[i,j]
 fig = plt.figure()
-plt.imshow(disagreement)
+img = plt.imshow(disagreement)
+plt.text(
+    0.0, 0.1, 
+    '\n'.join([f"E={i+1},D={j+1}" for i in range(5) for j in range(5)]), 
+    fontsize=10, transform=plt.gcf().transFigure
+)
+plt.title("Disagreement score")
+plt.colorbar()
+plt.subplots_adjust(left=0.2)
+
 del decoded, decoded_f
 
 with torch.inference_mode():
@@ -136,15 +148,27 @@ with torch.inference_mode():
         x_out = model.decoder[i](z_sample).reshape(*z_sample.shape[:-1], TOKEN_SIZE, -1)
         samples.append(x_out)
 
-    kl = torch.zeros(z_sample.shape[0],5,5)
+    entropy = torch.zeros(z_sample.shape[0], 5)
+    for i in range(5):
+        dist = D.Independent(D.Categorical(probs=(samples[i] / 10).softmax(dim=1).permute(0, 2, 1)), 1)
+        entropy[:, i] = dist.entropy()
+    entropy_mean_score = entropy.mean(dim=-1)
+    entropy_std_score = entropy.std(dim=-1)
+    entropy_std_score[torch.isnan(entropy_std_score)] = 0.0
+
+    kl = torch.zeros(z_sample.shape[0], 5, 5)
     for i in range(5):
         for j in range(5):
             if i==j:
                 continue
+            # TODO: this temperature scaling is not ideal
             dist1 = D.Independent(D.Categorical(probs=(samples[i] / 10).softmax(dim=1).permute(0, 2, 1)), 1)
             dist2 = D.Independent(D.Categorical(probs=(samples[j] / 10).softmax(dim=1).permute(0, 2, 1)), 1)
             kl[:, i, j] = D.kl_divergence(dist1, dist2)
-
+    kl_mean_score = kl.mean(dim=[-1, -2])
+    kl_std_score = kl.std(dim=[-1, -2])
+    kl_std_score[torch.isnan(kl_std_score)] = 0.0
+    
     disagreement = torch.zeros(z_sample.shape[0], 5, 5)
     for i in range(5):
         for j in range(5):
@@ -153,105 +177,128 @@ with torch.inference_mode():
             preds1 = samples[i].argmax(dim=1)
             preds2 = samples[j].argmax(dim=1)
             disagreement[:, i, j] = (preds1 != preds2).float().sum(dim=1)
-    disagreement_score = disagreement.mean(dim=[-2,-1])
+    disagreement_mean_score = disagreement.mean(dim=[-1, -2])
+    disagreement_std_score = disagreement.std(dim=[-1, -2])
+    disagreement_std_score[torch.isnan(disagreement_std_score)] = 0.0
 
-    x_var = kl.mean(dim=[-2,-1])
-    x_var_std = kl.std(dim=[-2,-1])
-    x_var_std[torch.isnan(x_var_std)] = 0.0
-
-    fig = plt.figure()
-    plot_embeddings(alpha=0.5)
-    plt.contourf(
-        z_sample[:, 0].reshape(n_points, n_points),
-        z_sample[:, 1].reshape(n_points, n_points),
-        x_var.reshape(n_points, n_points).detach().cpu(),
-        levels=50,
-        zorder=0,
-    )
-    plt.colorbar()
-
-    fig = plt.figure()
-    plot_embeddings(alpha=0.5)
-    plt.contourf(
-        z_sample[:, 0].reshape(n_points, n_points),
-        z_sample[:, 1].reshape(n_points, n_points),
-        x_var_std.reshape(n_points, n_points).detach().cpu(),
-        levels=50,
-        zorder=0,
-    )
-    plt.colorbar()
-    
-    fig = plt.figure()
-    plot_embeddings(alpha=0.5)
-    plt.contourf(
-        z_sample[:, 0].reshape(n_points, n_points),
-        z_sample[:, 1].reshape(n_points, n_points),
-        disagreement_score.reshape(n_points, n_points).detach().cpu(),
-        levels=50,
-        zorder=0,
-    )
-    plt.colorbar()
-
-with torch.inference_mode():
-    fig, ax = plt.subplots(1, 3)
-
-    for i, name in enumerate(['means', 'samples', 'ensemble']):
-        embeddings, labels = [ ], [ ]
-        for batch_idx, batch in tqdm(enumerate(train_dl)):
-            if batch_idx > 400:
-                break
-            x, y = batch
-            if name == 'means':
-                emb, _ = model.encode(x, 0)
-            elif name == 'samples':
-                z_mu, z_std = model.encode(x, 0)
-                emb = D.Independent(D.Normal(z_mu, z_std + 1e-4), 1).sample()
-            elif name == 'ensemble':
-                z_mu, z_std = model.encode(x)
-                emb = D.Independent(D.Normal(z_mu, z_std + 1e-4), 1).sample()
-            else:
-                raise ValueError()
-            embeddings.append(emb)
-            labels.append(y)
-            
-        embeddings = torch.cat(embeddings, dim=0)
-        labels = torch.cat(labels, dim=0)
-        
-        classifer = KNeighborsClassifier()
-        classifer.fit(embeddings[::2], labels[::2])
-        out = classifer.predict(z_sample)
-        c = ax[i].contourf(
+    for (score, name) in [
+        (entropy_mean_score, 'entropy_mean'),
+        (entropy_std_score, 'entropy_std'),
+        (kl_mean_score, 'kl_mean'),
+        (kl_std_score, 'kl_std'),
+        (disagreement_mean_score, 'disagreement_mean'),
+        (disagreement_std_score, 'disagreement_std'),
+    ]:
+        fig = plt.figure()
+        plot_embeddings(alpha=0.5)
+        plt.contourf(
             z_sample[:, 0].reshape(n_points, n_points),
             z_sample[:, 1].reshape(n_points, n_points),
-            out.reshape(n_points, n_points)
+            score.reshape(n_points, n_points).detach().cpu(),
+            levels=50,
+            zorder=0,
         )
-        preds = classifer.predict(embeddings[1::2])
-        true = labels[1::2].numpy()
-        print(f"{name} - Acc: {(preds==true).mean()}")
+        plt.colorbar()
+        plt.title(name)
+
+
+
+
+    # fig = plt.figure()
+    # plot_embeddings(alpha=0.5)
+    # plt.contourf(
+    #     z_sample[:, 0].reshape(n_points, n_points),
+    #     z_sample[:, 1].reshape(n_points, n_points),
+    #     x_var.reshape(n_points, n_points).detach().cpu(),
+    #     levels=50,
+    #     zorder=0,
+    # )
+    # plt.colorbar()
+
+    # fig = plt.figure()
+    # plot_embeddings(alpha=0.5)
+    # plt.contourf(
+    #     z_sample[:, 0].reshape(n_points, n_points),
+    #     z_sample[:, 1].reshape(n_points, n_points),
+    #     x_var_std.reshape(n_points, n_points).detach().cpu(),
+    #     levels=50,
+    #     zorder=0,
+    # )
+
+    # plt.colorbar()
+    
+    # fig = plt.figure()
+    # plot_embeddings(alpha=0.5)
+    # plt.contourf(
+    #     z_sample[:, 0].reshape(n_points, n_points),
+    #     z_sample[:, 1].reshape(n_points, n_points),
+    #     disagreement_score.reshape(n_points, n_points).detach().cpu(),
+    #     levels=50,
+    #     zorder=0,
+    # )
+    # plt.title('Disagreement score')
+    # plt.colorbar()
+
+# with torch.inference_mode():
+#     fig, ax = plt.subplots(1, 3)
+
+#     for i, name in enumerate(['means', 'samples', 'ensemble']):
+#         embeddings, labels = [ ], [ ]
+#         for batch_idx, batch in tqdm(enumerate(train_dl)):
+#             if batch_idx > 400:
+#                 break
+#             x, y = batch
+#             if name == 'means':
+#                 emb, _ = model.encode(x, 0)
+#             elif name == 'samples':
+#                 z_mu, z_std = model.encode(x, 0)
+#                 emb = D.Independent(D.Normal(z_mu, z_std + 1e-4), 1).sample()
+#             elif name == 'ensemble':
+#                 z_mu, z_std = model.encode(x)
+#                 emb = D.Independent(D.Normal(z_mu, z_std + 1e-4), 1).sample()
+#             else:
+#                 raise ValueError()
+#             embeddings.append(emb)
+#             labels.append(y)
+            
+#         embeddings = torch.cat(embeddings, dim=0)
+#         labels = torch.cat(labels, dim=0)
         
-    plt.colorbar(c)
+#         classifer = KNeighborsClassifier()
+#         classifer.fit(embeddings[::2], labels[::2])
+#         out = classifer.predict(z_sample)
+#         c = ax[i].contourf(
+#             z_sample[:, 0].reshape(n_points, n_points),
+#             z_sample[:, 1].reshape(n_points, n_points),
+#             out.reshape(n_points, n_points)
+#         )
+#         preds = classifer.predict(embeddings[1::2])
+#         true = labels[1::2].numpy()
+#         print(f"{name} - Acc: {(preds==true).mean()}")
+        
+#     plt.colorbar(c)
 
-with torch.inference_mode():
-    from stochman.discretized_manifold import DiscretizedManifold
+# with torch.inference_mode():
+#     from stochman.discretized_manifold import DiscretizedManifold
 
-    print("Constructing discretized manifold")
-    manifold = DiscretizedManifold()
-    manifold.fit(
-        model=model,
-        grid=linspaces,
-        batch_size=16
-    )
+#     print("Constructing discretized manifold")
+#     manifold = DiscretizedManifold()
+#     manifold.fit(
+#         model=model,
+#         grid=linspaces,
+#         batch_size=16
+#     )
 
-    fig, ax = plt.subplots(2, 5)
-    for i in range(10):
-        plot_embeddings(ax[i%2, i%5], alpha=0.3)
-        idx1, idx2 = D.Categorical(embeddings.norm(dim=1)).sample((2,))
-        curve, dist = manifold.shortest_path(
-            embeddings[idx1,:].unsqueeze(0),
-            embeddings[idx2,:].unsqueeze(0),
-        )
-        ax[i%2, i%5].plot(embeddings[idx1,0], embeddings[idx1,1], 'rx')
-        ax[i%2, i%5].plot(embeddings[idx2,0], embeddings[idx2,1], 'bx')
-        curve.plot(ax=ax[i%2,i%5])
+#     fig, ax = plt.subplots(2, 5)
+#     for i in range(10):
+#         plot_embeddings(ax[i%2, i%5], alpha=0.3)
+#         idx1, idx2 = D.Categorical(embeddings.norm(dim=1)).sample((2,))
+#         curve, dist = manifold.shortest_path(
+#             embeddings[idx1,:].unsqueeze(0),
+#             embeddings[idx2,:].unsqueeze(0),
+#         )
+#         ax[i%2, i%5].plot(embeddings[idx1,0], embeddings[idx1,1], 'rx')
+#         ax[i%2, i%5].plot(embeddings[idx2,0], embeddings[idx2,1], 'bx')
+#         curve.plot(ax=ax[i%2,i%5])
 
 plt.show()
