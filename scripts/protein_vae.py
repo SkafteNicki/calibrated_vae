@@ -7,6 +7,7 @@ from scr.layers import EnsembleLayer
 from scr.data import get_dataset, important_organisms, aa1_to_index
 import os
 from stochman.manifold import EmbeddedManifold
+import argparse
 
 SEQ_LEN = 2592
 TOKEN_SIZE = len(aa1_to_index)
@@ -194,10 +195,29 @@ class MixVAE(VAE, EmbeddedManifold):
 
 
 if __name__ == "__main__":
-    train, val, test = get_dataset('protein')
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--partly", action=argparse.BooleanOptionalAction, default=False)
+    args = parser.parse_args()
+    print(args)
+
+    train, val, test, _ = get_dataset('protein')
 
     train_dl = torch.utils.data.DataLoader(train, batch_size=64)
     val_dl = torch.utils.data.DataLoader(val, batch_size=64)
+
+    if args.partly:  # TODO: argparse this shit
+        seqs, labels = train.tensors
+        idx = (labels == 0) | (labels == 1) | (labels == 2) | (labels == 3) | (labels == 4)
+        train_dl = torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(seqs[idx], labels[idx]),
+            batch_size=64
+        )
+        seqs, labels = val.tensors
+        idx = (labels == 0) | (labels == 1) | (labels == 2) | (labels == 3) | (labels == 4)
+        val_dl = torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(seqs[idx], labels[idx]),
+            batch_size=64
+        )
 
     model = MixVAE()
 
@@ -211,7 +231,7 @@ if __name__ == "__main__":
     trainer.fit(model, train_dataloaders=train_dl, val_dataloaders=val_dl)
 
     os.makedirs("models/generate_models/", exist_ok=True)
-    torch.save(model.state_dict(), f"models/generate_models/{model.__class__.__name__}.pt",)
+    torch.save(model.state_dict(), f"models/generate_models/{model.__class__.__name__}_{args.partly}.pt",)
     """
     predictions = trainer.predict(model, dataloaders=train_dl)
     embeddings = torch.cat([p['encoder_mean'] for p in predictions], dim=0)
