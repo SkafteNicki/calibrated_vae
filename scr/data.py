@@ -252,11 +252,36 @@ def get_dataset(
         test = torch.utils.data.TensorDataset(
             seqs[idx[n_train + n_val :]], labels[idx[n_train + n_val :]]
         )
+    elif dataset_name == "protein_split1":
+        train, val, test, _ = get_dataset("protein")
+        seqs, labels = train.tensors
+        idx = (labels == 0) | (labels == 1) | (labels == 2) | (labels == 3) | (labels == 4)
+        train = torch.utils.data.TensorDataset(seqs[idx], labels[idx])
+        
+        seqs, labels = val.tensors
+        idx = (labels == 0) | (labels == 1) | (labels == 2) | (labels == 3) | (labels == 4)
+        val = torch.utils.data.TensorDataset(seqs[idx], labels[idx])
 
+        seqs, labels = test.tensors
+        idx = (labels == 0) | (labels == 1) | (labels == 2) | (labels == 3) | (labels == 4)
+        test = torch.utils.data.TensorDataset(seqs[idx], labels[idx])
+    elif dataset_name == "protein_split2":
+        train, val, test, _ = get_dataset("protein")
+        seqs, labels = train.tensors
+        idx = (labels == 5) | (labels == 6) | (labels == 7) | (labels == 8)
+        train = torch.utils.data.TensorDataset(seqs[idx], labels[idx])
+        
+        seqs, labels = val.tensors
+        idx = (labels == 5) | (labels == 6) | (labels == 7) | (labels == 8)
+        val = torch.utils.data.TensorDataset(seqs[idx], labels[idx])
+
+        seqs, labels = test.tensors
+        idx = (labels == 5) | (labels == 6) | (labels == 7) | (labels == 8)
+        test = torch.utils.data.TensorDataset(seqs[idx], labels[idx])
     else:
         raise ValueError("Unknown dataset")
 
-    if dataset_name not in ("celeba", "protein"):
+    if dataset_name not in ("celeba", "protein", "protein_split1", "protein_split2"):
         n_train = int(len(train) * 0.9)
         train, val = torch.utils.data.random_split(
             train, [n_train, len(train) - n_train]
