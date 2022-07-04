@@ -17,7 +17,7 @@ val_dl = torch.utils.data.DataLoader(val, batch_size=32)
 test_dl = torch.utils.data.DataLoader(test, batch_size=32)
 
 model = MixVAE()
-model.load_state_dict(torch.load("MixVAE.pt"))
+model.load_state_dict(torch.load("models/generative_models/MixVAE.pt"))
 
 trainer = pl.Trainer(logger=False)
 predictions = trainer.predict(model, dataloaders=train_dl)
@@ -289,16 +289,26 @@ with torch.inference_mode():
 #         batch_size=16
 #     )
 
-#     fig, ax = plt.subplots(2, 5)
-#     for i in range(10):
-#         plot_embeddings(ax[i%2, i%5], alpha=0.3)
-#         idx1, idx2 = D.Categorical(embeddings.norm(dim=1)).sample((2,))
-#         curve, dist = manifold.shortest_path(
-#             embeddings[idx1,:].unsqueeze(0),
-#             embeddings[idx2,:].unsqueeze(0),
-#         )
-#         ax[i%2, i%5].plot(embeddings[idx1,0], embeddings[idx1,1], 'rx')
-#         ax[i%2, i%5].plot(embeddings[idx2,0], embeddings[idx2,1], 'bx')
-#         curve.plot(ax=ax[i%2,i%5])
+#      fig, ax = plt.subplots(2, 5)
+#      for i in range(10):
+#          plot_embeddings(ax[i%2, i%5], alpha=0.3)
+#          idx1, idx2 = D.Categorical(embeddings.norm(dim=1)).sample((2,))
+#          curve, dist = manifold.connecting_geodesic(
+#              embeddings[idx1,:].unsqueeze(0),
+#              embeddings[idx2,:].unsqueeze(0),
+#          )
+#          ax[i%2, i%5].plot(embeddings[idx1,0], embeddings[idx1,1], 'rx')
+#          ax[i%2, i%5].plot(embeddings[idx2,0], embeddings[idx2,1], 'bx')
+#          curve.plot(ax=ax[i%2,i%5])
 
-plt.show()
+# fig, ax = plt.subplots(1, 1)
+# plot_embeddings(alpha=0.2)
+# idx1, idx2 = D.Categorical(embeddings.norm(dim=1)).sample((500,)).chunk(2)
+# for i, j in zip(idx1, idx2):
+#     curve, _ = manifold.connecting_geodesic(
+#         embeddings[i, :].unsqueeze(0),
+#         embeddings[j, :].unsqueeze(0),
+#     )
+#     curve.plot(ax=ax, c='magenta', alpha=0.5)
+
+# plt.show()

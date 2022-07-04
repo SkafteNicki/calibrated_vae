@@ -31,7 +31,7 @@ if __name__ == "__main__":
     val_dataloader = torch.utils.data.DataLoader(val, batch_size=64)
 
     model_class = get_model("vae")
-    model = model_class.fit(n_ensemble, train_dataloader, val_dataloader)
+    model = model_class.fit(n_ensemble, 1, train_dataloader, val_dataloader)
     model.eval()
 
     classifier = torch.nn.Sequential(
@@ -110,9 +110,16 @@ if __name__ == "__main__":
     optimizer.maximize()
 
 
-
-
-
+    grid = torch.stack(
+        torch.meshgrid(
+            [torch.linspace(-10, 10, 50) for _ in range(2)], indexing='ij'
+        )
+    ).reshape(2, -1).T
+    recons = torch.stack([g(z[0], z[1]) for z in grid], 0).squeeze().reshape(50, 50, 28, 28)
+    bigimg = torch.zeros(28*50, 28*50)
+    for i in range(50):
+        for j in range(50):
+            bigimg[28*i:28*(i+1), 28*j:28*(j+1)] = recons[i, j]
 
 
 

@@ -34,10 +34,11 @@ if __name__ == "__main__":
     n_ensemble = 5
 
     for dataset_name in args.datasets:
-        train, val, test = get_dataset(dataset_name)
+        train, val, test, _ = get_dataset(dataset_name)
         train_dataloader = torch.utils.data.DataLoader(train, batch_size=64)
         val_dataloader = torch.utils.data.DataLoader(val, batch_size=64)
         test_dataloader = torch.utils.data.DataLoader(test, batch_size=64)
+        n_channels = train.dataset.tensors[0].shape[1]
 
         for model_name in args.models:
             model_class = get_model(model_name)
@@ -50,7 +51,7 @@ if __name__ == "__main__":
 
             try:
                 train_start = time.time()
-                model = model_class.fit(n_ensemble, train_dataloader, val_dataloader)
+                model = model_class.fit(n_ensemble, n_channels, train_dataloader, val_dataloader)
                 train_end = time.time()
 
                 os.makedirs("models/generative_models/", exist_ok=True)

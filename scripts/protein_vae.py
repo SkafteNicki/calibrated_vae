@@ -1,3 +1,4 @@
+from dis import dis
 from torch import nn, distributions as D
 import pytorch_lightning as pl
 import torch
@@ -123,6 +124,8 @@ class VAE(pl.LightningModule):
 
 
 class MixVAE(VAE, EmbeddedManifold):
+    strategy="disagreement"
+
     def __init__(self, ensemble_size=5):
         super().__init__()
 
@@ -191,7 +194,26 @@ class MixVAE(VAE, EmbeddedManifold):
         return energy.std(0) # B
 
     def curve_length(self, curve):
-        return torch.sqrt(self.curve_energy(curve))
+        if self.strategy=='energy':
+            return torch.sqrt(self.curve_energy(curve))
+        elif self.strategy=="disagreement":
+            if curve.dim() == 2: curve.unsqueeze_(0) # BxNxd
+            dt = torch.norm(curve[:,:-1,:] - curve[:,1:,:], p=2, dim=-1) # Bx(N-1)
+
+            recon = torch.stack([self.decode(curve, i) for i in range(5)], 0) # 5xBxNxFxS
+            recon = recon.argmax(dim=3) # 5xBxNxS
+            disagreement = (recon[:,:,:-1,:] != recon[:,:,1:,:]).float()  # 5xBx(N-1)xS
+            disagreement = disagreement.sum(dim=-1)  # 5xBx(N-1)
+            disagreement_mean = disagreement.mean(0)  # Bx(N-1)
+            return (disagreement_mean * dt).sum(dim=-1)  # B
+        elif self.strategy=="stability":
+            if curve.dim() == 2: curve.unsqueeze_(0) # BxNxd
+            dt = torch.norm(curve[:,:-1,:] - curve[:,1:,:], p=2, dim=-1) # Bx(N-1)
+
+            recon = torch.stack([self.decode(curve, i) for i in range(5)], 0) # 5xBxNxFxS
+            recon = torch.softmax(recon, dim=3) # 5xBxNxFxS
+            ...
+            return (disagreement_mean * dt).sum(dim=-1)  # B
 
 
 if __name__ == "__main__":

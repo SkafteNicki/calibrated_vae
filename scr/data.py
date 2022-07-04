@@ -3,6 +3,15 @@ from typing import Tuple
 import torch
 from torch.utils.data import Dataset
 from torchvision import datasets, transforms
+from tfrecord.torch.dataset import TFRecordDataset, MultiTFRecordDataset
+
+import os
+import pickle as pkl
+import re
+
+import numpy as np
+from Bio import SeqIO
+
 
 aa1_to_index = {
     "A": 0,
@@ -81,6 +90,7 @@ def get_dataset(
         train = rgb_transform(train)
         test = rgb_transform(test)
     elif dataset_name == "cifar10":
+        from torchvision import datasets
         train = datasets.CIFAR10(
             root=f"data/{dataset_name}/",
             download=True,
@@ -108,6 +118,7 @@ def get_dataset(
         test = rgb_transform(test)
         n_labels = 100
     elif dataset_name == "mnist":
+        from torchvision import datasets
         train = datasets.MNIST(
             root=f"data/{dataset_name}/",
             download=True,
@@ -121,6 +132,7 @@ def get_dataset(
         train = gray_transform(train, n_channels)
         test = gray_transform(test, n_channels)
     elif dataset_name == "fmnist":
+        from torchvision import datasets
         train = datasets.FashionMNIST(
             root=f"data/{dataset_name}/",
             download=True,
@@ -175,40 +187,27 @@ def get_dataset(
             download=True,
         )
     elif dataset_name == "genome":
-        from tfrecord.torch.dataset import TFRecordDataset, MultiTFRecordDataset
+        def data_extract(data):
+            return torch.tensor(data['x']), torch.tensor(data['y'])
 
-        tfrecord_path = "before_2011_in_tr-20220623T125033Z-001/before_2011_in_tr/before_2011_in_tr-00000-of-00010.tfrecord"
-        dataset = TFRecordDataset(tfrecord_path, None)
-
-        def f(batch):
-            return {
-                'x': torch.nn.utils.rnn.pad_sequence([torch.tensor(b['x']) for b in batch], batch_first=True),
-                'y': torch.cat([torch.tensor(b['y']) for b in batch], 0),
-                'z': torch.nn.utils.rnn.pad_sequence([torch.tensor(b['z']) for b in batch], batch_first=True)
-            }
-
-        loader = torch.utils.data.DataLoader(dataset, batch_size=32, collate_fn=f)
-        data = next(iter(loader))
-        print(data)
-
-        tfrecord_path = "before_2011_in_tr-20220623T125033Z-001/before_2011_in_tr/before_2011_in_tr-0000{}-of-00010.tfrecord"
-        dataset_multi = MultiTFRecordDataset(
-            tfrecord_path, 
-            None, 
-            {k: 0.1 for k in range(10)}
-        )
-
-        loader = torch.utils.data.DataLoader(dataset_multi, batch_size=32, collate_fn=f)
-        l = iter(loader)
-        data = next(iter(loader))
-        print(data)
+        d = [ ]
+        for path in [
+            "data/genome/train/before_2011_in_tr-0000{}-of-00010.tfrecord",
+            "data/genome/val/between_2011-2016_in_val-0000{}-of-00010.tfrecord",
+            "data/genome/test/in/after_2016_in_test-0000{}-of-00010.tfrecord",
+            "data/genome/test/out/after_2016_ood_test-0000{}-of-00010.tfrecord", 
+        ]:
+            data = MultiTFRecordDataset(
+                data_pattern=path,
+                index_pattern=None,
+                splits={k: 0.1 for k in range(10)},
+                description = {"x": "byte", "y": "int"},
+                transform=data_extract
+            )
+            d.append(data)
+        train, val, test1, test2 = d
+        test = (test1, test2)
     elif dataset_name == "protein":
-        import os
-        import pickle as pkl
-        import re
-
-        import numpy as np
-        from Bio import SeqIO
         if "processed_data.pkl" not in os.listdir("data/protein"):
             seqs = []
             labels = []
@@ -256,7 +255,7 @@ def get_dataset(
     else:
         raise ValueError("Unknown dataset")
 
-    if dataset_name not in ("celeba", "protein"):
+    if dataset_name not in ("celeba", "protein", "genome"):
         n_train = int(len(train) * 0.9)
         train, val = torch.utils.data.random_split(
             train, [n_train, len(train) - n_train]

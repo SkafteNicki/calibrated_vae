@@ -30,15 +30,15 @@ class VAE(LightningModule):
                     monitor="val_loss", mode="min", patience=10, verbose=True
                 ),
             ],
-            "max_epochs": 50,
+#            "min_epochs": 50,
         }
         return config
 
-    def __init__(self, **kwargs):
+    def __init__(self, n_channels=1, **kwargs):
         super().__init__()
 
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 32, 3, stride=2),
+            nn.Conv2d(n_channels, 32, 3, stride=2),
             nn.LeakyReLU(),
             nn.Conv2d(32, 64, 3, stride=2),
             nn.LeakyReLU(),
@@ -59,7 +59,7 @@ class VAE(LightningModule):
             nn.LeakyReLU(),
             nn.ConvTranspose2d(16, 8, 3, stride=2),
             nn.LeakyReLU(),
-            nn.Conv2d(8, 1, 4),
+            nn.Conv2d(8, n_channels, 4),
             nn.Sigmoid(),
         )
 
@@ -136,8 +136,8 @@ class VAE(LightningModule):
         return torch.optim.Adam(self.parameters(), lr=1e-4)
 
     @classmethod
-    def fit(cls, n_ensemble, train_dataloader, val_dataloader=None):
-        model = cls()
+    def fit(cls, n_ensemble, n_channels, train_dataloader, val_dataloader=None):
+        model = cls(n_channels)
         config = cls.trainer_config
         trainer = Trainer(**config)
         trainer.fit(
