@@ -10,6 +10,7 @@ import torch.distributions as D
 from torch import nn
 from tqdm import tqdm
 from sklearn.neighbors import KNeighborsClassifier
+from stochman.discretized_manifold import DiscretizedManifold
 
 train, val, test, _ = get_dataset('protein')
 train_dl = torch.utils.data.DataLoader(train, batch_size=32)
@@ -148,6 +149,7 @@ with torch.inference_mode():
         x_out = model.decoder[i](z_sample).reshape(*z_sample.shape[:-1], TOKEN_SIZE, -1)
         samples.append(x_out)
 
+    # entropy
     entropy = torch.zeros(z_sample.shape[0], 5)
     for i in range(5):
         dist = D.Independent(D.Categorical(probs=(samples[i] / 10).softmax(dim=1).permute(0, 2, 1)), 1)
@@ -156,6 +158,7 @@ with torch.inference_mode():
     entropy_std_score = entropy.std(dim=-1)
     entropy_std_score[torch.isnan(entropy_std_score)] = 0.0
 
+    # kl divergence
     kl = torch.zeros(z_sample.shape[0], 5, 5)
     for i in range(5):
         for j in range(5):
@@ -169,6 +172,7 @@ with torch.inference_mode():
     kl_std_score = kl.std(dim=[-1, -2])
     kl_std_score[torch.isnan(kl_std_score)] = 0.0
     
+    # disagreement
     disagreement = torch.zeros(z_sample.shape[0], 5, 5)
     for i in range(5):
         for j in range(5):
@@ -181,6 +185,12 @@ with torch.inference_mode():
     disagreement_std_score = disagreement.std(dim=[-1, -2])
     disagreement_std_score[torch.isnan(disagreement_std_score)] = 0.0
 
+    # stability
+    recon = torch.stack(samples, 0).softmax(dim=2)
+    mu =  recon.mean(dim=0, keepdim=True)
+    localvar = (recon - mu).pow(2).mean(dim=0)
+    stability = localvar.sum(dim=[-1, -2])
+
     for (score, name) in [
         (entropy_mean_score, 'entropy_mean'),
         (entropy_std_score, 'entropy_std'),
@@ -188,6 +198,7 @@ with torch.inference_mode():
         (kl_std_score, 'kl_std'),
         (disagreement_mean_score, 'disagreement_mean'),
         (disagreement_std_score, 'disagreement_std'),
+        (stability, 'stability')
     ]:
         fig = plt.figure()
         plot_embeddings(alpha=0.5)
@@ -278,37 +289,24 @@ with torch.inference_mode():
         
 #     plt.colorbar(c)
 
-# with torch.inference_mode():
-#     from stochman.discretized_manifold import DiscretizedManifold
+model.strategy = 'disagreement' #'stability'
+with torch.inference_mode():
+    print("Constructing discretized manifold")
+    manifold = DiscretizedManifold()
+    manifold.fit(
+        model=model,
+        grid=linspaces,
+        batch_size=64,
+    )
 
-#     print("Constructing discretized manifold")
-#     manifold = DiscretizedManifold()
-#     manifold.fit(
-#         model=model,
-#         grid=linspaces,
-#         batch_size=16
-#     )
+fig, ax = plt.subplots(1, 1)
+plot_embeddings(alpha=0.2)
+idx1, idx2 = D.Categorical(embeddings.norm(dim=1)).sample((1000,)).chunk(2)
+for i, j in zip(idx1, idx2):
+    curve, _ = manifold.connecting_geodesic(
+        embeddings[i, :].unsqueeze(0),
+        embeddings[j, :].unsqueeze(0),
+    )
+    curve.plot(ax=ax, c='magenta', alpha=0.5)
 
-#      fig, ax = plt.subplots(2, 5)
-#      for i in range(10):
-#          plot_embeddings(ax[i%2, i%5], alpha=0.3)
-#          idx1, idx2 = D.Categorical(embeddings.norm(dim=1)).sample((2,))
-#          curve, dist = manifold.connecting_geodesic(
-#              embeddings[idx1,:].unsqueeze(0),
-#              embeddings[idx2,:].unsqueeze(0),
-#          )
-#          ax[i%2, i%5].plot(embeddings[idx1,0], embeddings[idx1,1], 'rx')
-#          ax[i%2, i%5].plot(embeddings[idx2,0], embeddings[idx2,1], 'bx')
-#          curve.plot(ax=ax[i%2,i%5])
-
-# fig, ax = plt.subplots(1, 1)
-# plot_embeddings(alpha=0.2)
-# idx1, idx2 = D.Categorical(embeddings.norm(dim=1)).sample((500,)).chunk(2)
-# for i, j in zip(idx1, idx2):
-#     curve, _ = manifold.connecting_geodesic(
-#         embeddings[i, :].unsqueeze(0),
-#         embeddings[j, :].unsqueeze(0),
-#     )
-#     curve.plot(ax=ax, c='magenta', alpha=0.5)
-
-# plt.show()
+plt.show()

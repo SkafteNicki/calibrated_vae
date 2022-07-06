@@ -178,6 +178,13 @@ class MixVAE(VAE, EmbeddedManifold):
         else:
             return self.decoder[idx](z).reshape(*z.shape[:-1], TOKEN_SIZE, -1)
 
+    def forward(self, x, idx=None):
+        encoder_mu, encoder_std = self.encode(x, idx=idx)
+        q_dist = D.Independent(D.Normal(encoder_mu, encoder_std + 1e-4), 1)
+        z = q_dist.rsample()
+        recon = self.decode(z, idx=idx)
+        return recon, q_dist
+
     def embed(self, points, jacobian=False):
         pass
 
@@ -212,48 +219,49 @@ class MixVAE(VAE, EmbeddedManifold):
 
             recon = torch.stack([self.decode(curve, i) for i in range(5)], 0) # 5xBxNxFxS
             recon = torch.softmax(recon, dim=3) # 5xBxNxFxS
-            ...
-            return (disagreement_mean * dt).sum(dim=-1)  # B
+            mu =  recon.mean(dim=0, keepdim=True)  # 1xBxNxFxS
+            localvar = (recon - mu).pow(2).mean(dim=0)  # BxNxFxS
+            score = (localvar[:, :-1] + localvar[:, 1:]).sum(dim=-1).sum(dim=-1)  # Bx(N-1)
+            return (score * dt).sum(dim=-1)  # B
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--model", default='VAE')
     parser.add_argument("--partly", action=argparse.BooleanOptionalAction, default=False)
     args = parser.parse_args()
     print(args)
 
-    train, val, test, _ = get_dataset('protein')
-
+    if args.partly:
+        train, val, test, _ = get_dataset('protein_split1')
+    else:
+        train, val, test, _ = get_dataset('protein')
+    
     train_dl = torch.utils.data.DataLoader(train, batch_size=64)
     val_dl = torch.utils.data.DataLoader(val, batch_size=64)
 
-    if args.partly:  # TODO: argparse this shit
-        seqs, labels = train.tensors
-        idx = (labels == 0) | (labels == 1) | (labels == 2) | (labels == 3) | (labels == 4)
-        train_dl = torch.utils.data.DataLoader(
-            torch.utils.data.TensorDataset(seqs[idx], labels[idx]),
-            batch_size=64
+    reps = 1
+    if args.model == 'VAE' or args.model == 'DeepVAE':
+        model = VAE()
+        reps = 5 if args.model == 'DeepVAE' else reps
+        name = 'vae' if args.model == 'VAE' else "deepvae_{r}"
+    else:
+        model = MixVAE()
+        name = 'mixvae'
+
+
+    for r in range(reps):
+        trainer = pl.Trainer(
+            logger=pl.loggers.WandbLogger(),
+            accelerator="auto",
+            num_sanity_val_steps=0,
+            devices=1,
+            max_epochs=500,
         )
-        seqs, labels = val.tensors
-        idx = (labels == 0) | (labels == 1) | (labels == 2) | (labels == 3) | (labels == 4)
-        val_dl = torch.utils.data.DataLoader(
-            torch.utils.data.TensorDataset(seqs[idx], labels[idx]),
-            batch_size=64
-        )
+        trainer.fit(model, train_dataloaders=train_dl, val_dataloaders=val_dl)
 
-    model = MixVAE()
-
-    trainer = pl.Trainer(
-        logger=pl.loggers.WandbLogger(),
-        accelerator="auto",
-        num_sanity_val_steps=0,
-        devices=1,
-        max_epochs=500,
-    )
-    trainer.fit(model, train_dataloaders=train_dl, val_dataloaders=val_dl)
-
-    os.makedirs("models/generate_models/", exist_ok=True)
-    torch.save(model.state_dict(), f"models/generate_models/{model.__class__.__name__}_{args.partly}.pt",)
+        os.makedirs("models/generate_models/", exist_ok=True)
+        torch.save(model.state_dict(), f"models/generate_models/{name}_{args.partly}.pt",)
     """
     predictions = trainer.predict(model, dataloaders=train_dl)
     embeddings = torch.cat([p['encoder_mean'] for p in predictions], dim=0)
